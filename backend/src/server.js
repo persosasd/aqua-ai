@@ -244,7 +244,7 @@ app.get('/api/health', async (req, res) => {
   try {
     const dbHealth = await getHealthStatus();
     res.json({
-      status: dbHealth.connected ? 'OK' : 'DEGRADED',
+      status: dbHealth.status === 'healthy' ? 'OK' : 'DEGRADED',
       timestamp: new Date().toISOString(),
     });
   } catch {

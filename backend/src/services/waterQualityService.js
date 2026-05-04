@@ -3,7 +3,7 @@
  * Pure business logic for water quality data.
  */
 
-const { supabase } = require('../db/supabase');
+const { supabase, isSupabaseConfigured } = require('../db/supabase');
 const { db } = require('../db/connection');
 const { PAGINATION_DEFAULTS } = require('../constants');
 
@@ -23,6 +23,77 @@ async function getReadings(filters = {}) {
     limit = PAGINATION_DEFAULTS.LIMIT,
     offset = PAGINATION_DEFAULTS.OFFSET,
   } = filters;
+
+  if (!isSupabaseConfigured) {
+    const baseQuery = db('water_quality_readings as wqr')
+      .join('locations as l', 'wqr.location_id', 'l.id')
+      .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id');
+
+    if (location_id) {
+      const parsedId = Number(location_id);
+      if (Number.isFinite(parsedId)) {
+        baseQuery.where('wqr.location_id', parsedId);
+      } else {
+        baseQuery.where('l.name', 'ilike', `%${location_id}%`);
+      }
+    }
+
+    if (parameter) {
+      baseQuery.where('wqp.parameter_code', String(parameter).toUpperCase());
+    }
+
+    if (state) {
+      baseQuery.where('l.state', 'ilike', `%${state}%`);
+    }
+
+    if (risk_level) {
+      baseQuery.where('wqr.risk_level', risk_level);
+    }
+
+    if (start_date) {
+      baseQuery.where('wqr.measurement_date', '>=', start_date);
+    }
+
+    if (end_date) {
+      baseQuery.where('wqr.measurement_date', '<=', end_date);
+    }
+
+    const totalResult = await baseQuery.clone().count('* as total').first();
+    const total = parseInt(totalResult?.total || 0, 10);
+
+    const rows = await baseQuery
+      .clone()
+      .select(
+        'wqr.id as id',
+        'wqr.value as value',
+        'wqr.measurement_date as measurement_date',
+        'wqr.source as source',
+        'wqr.risk_level as risk_level',
+        'wqr.quality_score as quality_score',
+        'l.id as location_id',
+        'l.name as location_name',
+        'l.state as state',
+        'l.district as district',
+        'l.latitude as latitude',
+        'l.longitude as longitude',
+        'wqp.parameter_name as parameter',
+        'wqp.parameter_code as parameter_code',
+        'wqp.unit as unit'
+      )
+      .orderBy('wqr.measurement_date', 'desc')
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data: rows,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total,
+      },
+    };
+  }
 
   let query = supabase.from('water_quality_readings').select(
     `
@@ -107,6 +178,32 @@ async function getReadings(filters = {}) {
  * @returns {Promise<object[]>}
  */
 async function getParameters() {
+  if (!isSupabaseConfigured) {
+    const rows = await db('water_quality_parameters')
+      .select(
+        'parameter_code',
+        'parameter_name',
+        'unit',
+        'safe_limit',
+        'moderate_limit',
+        'high_limit',
+        'critical_limit',
+        'description'
+      )
+      .orderBy('parameter_code');
+
+    return (rows || []).map((p) => ({
+      code: p.parameter_code,
+      name: p.parameter_name,
+      unit: p.unit,
+      safe_limit: p.safe_limit,
+      moderate_limit: p.moderate_limit,
+      high_limit: p.high_limit,
+      critical_limit: p.critical_limit,
+      description: p.description,
+    }));
+  }
+
   const { data, error } = await supabase
     .from('water_quality_parameters')
     .select(
@@ -207,6 +304,33 @@ async function getStats(filters = {}) {
 async function getReadingsByLocation(locationId, filters = {}) {
   const { parameter, limit = PAGINATION_DEFAULTS.SMALL_LIMIT } = filters;
 
+  if (!isSupabaseConfigured) {
+    const baseQuery = db('water_quality_readings as wqr')
+      .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id')
+      .where('wqr.location_id', locationId);
+
+    if (parameter) {
+      baseQuery.where('wqp.parameter_code', parameter.toUpperCase());
+    }
+
+    const rows = await baseQuery
+      .select(
+        'wqr.id as id',
+        'wqp.parameter_name as parameter',
+        'wqp.parameter_code as parameter_code',
+        'wqr.value as value',
+        'wqp.unit as unit',
+        'wqr.measurement_date as measurement_date',
+        'wqr.risk_level as risk_level',
+        'wqr.quality_score as quality_score',
+        'wqr.source as source'
+      )
+      .orderBy('wqr.measurement_date', 'desc')
+      .limit(limit);
+
+    return rows || [];
+  }
+
   let query = supabase
     .from('water_quality_readings')
     .select(
@@ -250,6 +374,40 @@ async function getReadingsByLocation(locationId, filters = {}) {
  * @returns {Promise<object|null>}
  */
 async function getReadingById(id) {
+  if (!isSupabaseConfigured) {
+    const row = await db('water_quality_readings as wqr')
+      .join('locations as l', 'wqr.location_id', 'l.id')
+      .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id')
+      .select(
+        'wqr.id as id',
+        'wqr.value as value',
+        'wqr.measurement_date as measurement_date',
+        'wqr.risk_level as risk_level',
+        'wqr.quality_score as quality_score',
+        'wqr.source as source',
+        'wqr.is_validated as is_validated',
+        'wqr.validation_notes as validation_notes',
+        'wqr.created_at as created_at',
+        'l.id as location_id',
+        'l.name as location_name',
+        'l.state as state',
+        'l.district as district',
+        'l.latitude as latitude',
+        'l.longitude as longitude',
+        'wqp.parameter_name as parameter',
+        'wqp.parameter_code as parameter_code',
+        'wqp.unit as unit'
+      )
+      .where('wqr.id', id)
+      .first();
+
+    if (!row) {
+      return null;
+    }
+
+    return row;
+  }
+
   const { data, error } = await supabase
     .from('water_quality_readings')
     .select(

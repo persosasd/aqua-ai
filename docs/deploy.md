@@ -90,18 +90,16 @@ postgresql://postgres:[YOUR-PASSWORD]@db.<your-project-id>.supabase.co:5432/post
   - Visit the static site URL
   - Open DevTools → Network and confirm API calls point to backend
 
-## Step 5: Schedule Data Pipeline (GitHub Actions)
+## Step 5: Trigger Data Pipeline (Manual or Startup)
 
 - Add repository secrets:
   - SUPABASE_DATABASE_URL: your Supabase connection string
   - DATA_GOV_IN_API_KEY, WEATHER_API_KEY (optional)
-- Create `.github/workflows/data-pipeline.yml` with:
+- Create `.github/workflows/data-pipeline.yml` with manual dispatch:
 
 ```yaml
 name: Data Pipeline Sync
 on:
-  schedule:
-    - cron: '*/30 * * * *' # every 30 minutes
   workflow_dispatch:
 jobs:
   run-pipeline:
@@ -126,6 +124,8 @@ jobs:
         run: python data-pipeline/fetch_data.py
 ```
 
+- Optional: run the pipeline on backend startup by setting `DATA_PIPELINE_ON_START=true`
+  (requires Python + dependencies available in your runtime).
 - Monitor Action runs and Supabase table updates
 
 ## Step 6: Security & Reliability

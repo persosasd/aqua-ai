@@ -3,11 +3,15 @@
  * Pure business logic for alert data.
  */
 
-const { supabase } = require('../db/supabase');
+const { supabase, isSupabaseConfigured } = require('../db/supabase');
 const { db } = require('../db/connection');
 const { APIError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 const { ALERT_STATUS } = require('../constants');
+
+const supportsReturning = ['postgresql', 'postgres', 'pg'].includes(
+  db?.client?.config?.client
+);
 
 /**
  * Get paginated alerts with optional filters.
@@ -24,6 +28,71 @@ async function getAlerts(filters = {}) {
     limit = 100,
     offset = 0,
   } = filters;
+
+  if (!isSupabaseConfigured) {
+    const baseQuery = db('alerts as a')
+      .join('locations as l', 'a.location_id', 'l.id')
+      .join('water_quality_parameters as wqp', 'a.parameter_id', 'wqp.id');
+
+    if (status) {
+      baseQuery.where('a.status', status);
+    }
+    if (severity) {
+      baseQuery.where('a.severity', severity);
+    }
+    if (location_id) {
+      baseQuery.where('a.location_id', location_id);
+    }
+    if (parameter) {
+      baseQuery.where('wqp.parameter_code', parameter.toUpperCase());
+    }
+    if (alert_type) {
+      baseQuery.where('a.alert_type', alert_type);
+    }
+    if (start_date) {
+      baseQuery.where('a.triggered_at', '>=', start_date);
+    }
+    if (end_date) {
+      baseQuery.where('a.triggered_at', '<=', end_date);
+    }
+
+    const totalResult = await baseQuery.clone().count('a.id as total').first();
+    const total = parseInt(totalResult?.total || 0, 10);
+
+    const rows = await baseQuery
+      .clone()
+      .select(
+        'a.id as id',
+        'a.location_id as location_id',
+        'a.alert_type as alert_type',
+        'a.severity as severity',
+        'a.message as message',
+        'a.threshold_value as threshold_value',
+        'a.actual_value as actual_value',
+        'a.status as status',
+        'a.triggered_at as triggered_at',
+        'a.resolved_at as resolved_at',
+        'a.notification_sent as notification_sent',
+        'a.created_at as created_at',
+        'l.name as location_name',
+        'l.state as state',
+        'wqp.parameter_name as parameter',
+        'wqp.parameter_code as parameter_code'
+      )
+      .orderBy('a.triggered_at', 'desc')
+      .limit(limit)
+      .offset(offset);
+
+    return {
+      data: rows || [],
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: offset + limit < total,
+      },
+    };
+  }
 
   let query = supabase.from('alerts').select(
     `
@@ -102,6 +171,17 @@ async function getAlerts(filters = {}) {
  */
 async function getActiveAlerts(filters = {}) {
   const { severity, limit = 50 } = filters;
+
+  if (!isSupabaseConfigured) {
+    let query = db('active_alerts').select('*');
+
+    if (severity) {
+      query = query.where('severity', severity);
+    }
+
+    const data = await query.orderBy('triggered_at', 'desc').limit(limit);
+    return data || [];
+  }
 
   let query = supabase.from('active_alerts').select('*');
 
@@ -235,6 +315,27 @@ async function getAlertStats(filters = {}) {
  * Uses .maybeSingle() to distinguish "not found" from real DB errors.
  */
 async function getAlertById(id) {
+  if (!isSupabaseConfigured) {
+    const data = await db('alerts as a')
+      .join('locations as l', 'a.location_id', 'l.id')
+      .join('water_quality_parameters as wqp', 'a.parameter_id', 'wqp.id')
+      .select(
+        'a.*',
+        'l.name as location_name',
+        'l.state as state',
+        'l.district as district',
+        'l.latitude as latitude',
+        'l.longitude as longitude',
+        'wqp.parameter_name as parameter',
+        'wqp.parameter_code as parameter_code',
+        'wqp.unit as unit'
+      )
+      .where('a.id', id)
+      .first();
+
+    return data || null;
+  }
+
   const { data, error } = await supabase
     .from('alerts')
     .select(
@@ -275,6 +376,43 @@ async function getAlertById(id) {
  * Uses atomic WHERE clause to prevent race conditions (no read-then-write).
  */
 async function resolveAlert(id, resolutionNotes, userId) {
+  if (!isSupabaseConfigured) {
+    const updatePayload = {
+      status: ALERT_STATUS.RESOLVED,
+      resolved_at: new Date().toISOString(),
+      resolution_notes: resolutionNotes || null,
+    };
+
+    const updateQuery = db('alerts')
+      .where('id', id)
+      .whereNot('status', ALERT_STATUS.RESOLVED)
+      .update(updatePayload);
+    if (supportsReturning) {
+      updateQuery.returning('*');
+    }
+    const updateResult = await updateQuery;
+
+    let updated = Array.isArray(updateResult) ? updateResult[0] : null;
+    if (!updated && typeof updateResult === 'number' && updateResult > 0) {
+      updated = await db('alerts').where('id', id).first();
+    }
+
+    if (!updated) {
+      const existing = await db('alerts')
+        .select('id', 'status')
+        .where('id', id)
+        .first();
+
+      if (!existing) {
+        throw new APIError('Alert not found', 404);
+      }
+      throw new APIError('Alert is already resolved', 400);
+    }
+
+    logger.info('Alert resolved', { alertId: id, userId });
+    return updated;
+  }
+
   const { data: updated, error } = await supabase
     .from('alerts')
     .update({
@@ -314,6 +452,42 @@ async function resolveAlert(id, resolutionNotes, userId) {
  * Uses atomic WHERE clause to prevent race conditions (no read-then-write).
  */
 async function dismissAlert(id, dismissalReason, userId) {
+  if (!isSupabaseConfigured) {
+    const updatePayload = {
+      status: ALERT_STATUS.DISMISSED,
+      dismissal_reason: dismissalReason || null,
+    };
+
+    const updateQuery = db('alerts')
+      .where('id', id)
+      .where('status', ALERT_STATUS.ACTIVE)
+      .update(updatePayload);
+    if (supportsReturning) {
+      updateQuery.returning('*');
+    }
+    const updateResult = await updateQuery;
+
+    let updated = Array.isArray(updateResult) ? updateResult[0] : null;
+    if (!updated && typeof updateResult === 'number' && updateResult > 0) {
+      updated = await db('alerts').where('id', id).first();
+    }
+
+    if (!updated) {
+      const existing = await db('alerts')
+        .select('id', 'status')
+        .where('id', id)
+        .first();
+
+      if (!existing) {
+        throw new APIError('Alert not found', 404);
+      }
+      throw new APIError('Only active alerts can be dismissed', 400);
+    }
+
+    logger.info('Alert dismissed', { alertId: id, userId });
+    return updated;
+  }
+
   const { data: updated, error } = await supabase
     .from('alerts')
     .update({

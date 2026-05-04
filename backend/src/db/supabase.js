@@ -8,9 +8,26 @@ const isTestEnv = process.env.NODE_ENV === 'test';
 const { createClient } = isTestEnv
   ? { createClient: null }
   : require('@supabase/supabase-js');
+const logger = require('../utils/logger');
 
-const SUPABASE_URL =
-  process.env.SUPABASE_URL || 'https://szxufqkvkgcspnmvohwd.supabase.co';
+const deriveSupabaseUrl = () => {
+  if (!process.env.DATABASE_URL) {
+    return null;
+  }
+  try {
+    const dbUrl = new URL(process.env.DATABASE_URL);
+    const host = dbUrl.hostname || '';
+    const match = host.match(/^(?:db\.)?([^.]+)\.supabase\.co$/);
+    if (match) {
+      return `https://${match[1]}.supabase.co`;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const SUPABASE_URL = process.env.SUPABASE_URL || deriveSupabaseUrl();
 const SUPABASE_KEY =
   process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY;
 
@@ -43,19 +60,23 @@ const createMockClient = () => ({
   from: (table) => createMockQuery(table),
 });
 
-if (!SUPABASE_KEY && !isTestEnv) {
-  throw new Error(
-    'Missing SUPABASE_SERVICE_KEY or SUPABASE_ANON_KEY environment variable'
+const isSupabaseConfigured = isTestEnv || Boolean(SUPABASE_URL && SUPABASE_KEY);
+
+if (!isSupabaseConfigured && !isTestEnv) {
+  logger.warn(
+    'Supabase is not configured (SUPABASE_URL/SUPABASE_*_KEY missing). Falling back to direct database queries.'
   );
 }
 
 const supabase = isTestEnv
   ? createMockClient()
-  : createClient(SUPABASE_URL, SUPABASE_KEY, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
+  : isSupabaseConfigured
+    ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false,
+        },
+      })
+    : null;
 
-module.exports = { supabase };
+module.exports = { supabase, isSupabaseConfigured };

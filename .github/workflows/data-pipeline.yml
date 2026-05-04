@@ -5,6 +5,9 @@ on:
     - cron: '*/30 * * * *' # every 30 minutes
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Define secrets at workflow level for validation
 env:
   DATABASE_URL: ${{ secrets.DATABASE_URL }}

@@ -1,7 +1,7 @@
 # Data Pipeline Dependencies
 aiohttp==3.13.3
 pandas==2.3.3
-numpy==2.4.3
+numpy==2.4.4
 python-dotenv==1.2.2
 psycopg2-binary==2.9.11
 python-dateutil==2.9.0.post0

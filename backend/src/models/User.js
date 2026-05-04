@@ -62,17 +62,20 @@ class User {
    * Update user
    */
   static async update(id, updates) {
+    // Work on a shallow copy so we don't mutate the caller's object
+    const data = { ...updates };
+
     // If password is being updated, hash it
-    if (updates.password) {
+    if (data.password) {
       const salt = await bcrypt.genSalt(10);
-      updates.password = await bcrypt.hash(updates.password, salt);
+      data.password = await bcrypt.hash(data.password, salt);
     }
 
-    updates.updated_at = new Date();
+    data.updated_at = new Date();
 
     const [user] = await db('users')
       .where({ id })
-      .update(updates)
+      .update(data)
       .returning(['id', 'email', 'name', 'role', 'updated_at']);
 
     return user;
@@ -99,7 +102,7 @@ class User {
 
     return {
       users,
-      total: parseInt(count),
+      total: parseInt(count || '0', 10),
       limit,
       offset,
     };

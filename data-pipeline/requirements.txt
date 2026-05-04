@@ -1,6 +1,6 @@
 # Data Pipeline Dependencies
 aiohttp==3.13.3
-pandas==2.3.3
+pandas==3.0.2
 numpy==2.4.3
 python-dotenv==1.2.2
 psycopg2-binary==2.9.11

@@ -4,7 +4,12 @@
  * and that the correct HTTP status codes are returned.
  */
 
-const { APIError, errorHandler, notFound, asyncHandler } = require('../src/middleware/errorHandler');
+const {
+  APIError,
+  errorHandler,
+  notFound,
+  asyncHandler,
+} = require('../src/middleware/errorHandler');
 
 // Minimal mock req/res/next for middleware testing
 function makeReq(overrides = {}) {

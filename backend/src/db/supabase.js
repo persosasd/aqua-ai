@@ -64,7 +64,7 @@ const isSupabaseConfigured = isTestEnv || Boolean(SUPABASE_URL && SUPABASE_KEY);
 
 if (!isSupabaseConfigured && !isTestEnv) {
   logger.warn(
-    'Supabase is not configured (SUPABASE_URL/SUPABASE_*_KEY missing). Falling back to direct database queries.'
+    'Supabase is not configured (SUPABASE_URL/SUPABASE_*_KEY missing). Falling back to direct database queries. Set SUPABASE_URL explicitly for custom Supabase domains.'
   );
 }
 

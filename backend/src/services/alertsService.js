@@ -9,10 +9,6 @@ const { APIError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 const { ALERT_STATUS } = require('../constants');
 
-const supportsReturning = ['postgresql', 'postgres', 'pg'].includes(
-  db?.client?.config?.client
-);
-
 /**
  * Get paginated alerts with optional filters.
  */
@@ -383,17 +379,13 @@ async function resolveAlert(id, resolutionNotes, userId) {
       resolution_notes: resolutionNotes || null,
     };
 
-    const updateQuery = db('alerts')
+    const updatedCount = await db('alerts')
       .where('id', id)
       .whereNot('status', ALERT_STATUS.RESOLVED)
       .update(updatePayload);
-    if (supportsReturning) {
-      updateQuery.returning('*');
-    }
-    const updateResult = await updateQuery;
 
-    let updated = Array.isArray(updateResult) ? updateResult[0] : null;
-    if (!updated && typeof updateResult === 'number' && updateResult > 0) {
+    let updated = null;
+    if (updatedCount > 0) {
       updated = await db('alerts').where('id', id).first();
     }
 
@@ -458,17 +450,13 @@ async function dismissAlert(id, dismissalReason, userId) {
       dismissal_reason: dismissalReason || null,
     };
 
-    const updateQuery = db('alerts')
+    const updatedCount = await db('alerts')
       .where('id', id)
       .where('status', ALERT_STATUS.ACTIVE)
       .update(updatePayload);
-    if (supportsReturning) {
-      updateQuery.returning('*');
-    }
-    const updateResult = await updateQuery;
 
-    let updated = Array.isArray(updateResult) ? updateResult[0] : null;
-    if (!updated && typeof updateResult === 'number' && updateResult > 0) {
+    let updated = null;
+    if (updatedCount > 0) {
       updated = await db('alerts').where('id', id).first();
     }
 

@@ -100,7 +100,6 @@ services:
       timeout: 5s
       retries: 3
 
-
 volumes:
   postgres_data:
   ai_models_data:

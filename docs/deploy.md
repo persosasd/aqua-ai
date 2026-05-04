@@ -66,6 +66,9 @@ postgresql://postgres:[YOUR-PASSWORD]@db.<your-project-id>.supabase.co:5432/post
   - JWT_SECRET: long random string
   - NODE_ENV: production
   - PORT: 10000
+  - Optional (for Supabase REST access or custom domains):
+    - SUPABASE_URL
+    - SUPABASE_SERVICE_KEY (preferred) or SUPABASE_ANON_KEY
 - Frontend (Render):
   - REACT_APP_API_URL is auto-populated from backend via the blueprint
 

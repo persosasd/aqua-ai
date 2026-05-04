@@ -105,19 +105,22 @@ async function getGeoJSON() {
   if (!isSupabaseConfigured) {
     const data = await db('location_summary').select('*').orderBy('name');
     const features = (data || [])
-      .filter(
-        (loc) =>
-          Number.isFinite(Number(loc.longitude)) &&
-          Number.isFinite(Number(loc.latitude))
-      )
-      .map((loc) => ({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: [loc.longitude, loc.latitude],
-        },
-        properties: loc,
-      }));
+      .map((loc) => {
+        const longitude = Number(loc.longitude);
+        const latitude = Number(loc.latitude);
+        if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+          return null;
+        }
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'Point',
+            coordinates: [longitude, latitude],
+          },
+          properties: loc,
+        };
+      })
+      .filter(Boolean);
 
     return { type: 'FeatureCollection', features };
   }

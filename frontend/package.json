@@ -55,7 +55,7 @@
     "tailwindcss": "^3.4.0",
     "typescript": "^5.3.0",
     "vaul": "^1.1.2",
-    "vite": "^7.3.1"
+    "vite": "^7.3.2"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.3",

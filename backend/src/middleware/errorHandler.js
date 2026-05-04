@@ -39,20 +39,19 @@ const errorHandler = (err, req, res, _next) => {
     requestId: req.requestId,
   });
 
+  // In production: show the message for client errors (4xx) but hide it for
+  // server errors (5xx) to avoid leaking internal implementation details.
+  const showMessage = isDev || statusCode < 500;
+
   const response = {
     success: false,
-    error: isDev ? err.message : 'Internal Server Error',
+    error: showMessage ? err.message : 'Internal Server Error',
     requestId: req.requestId, // So users can reference in bug reports
     ...(isDev && {
       stack: err.stack,
       details: err.details || null,
     }),
   };
-
-  // Never leak error messages for 500s in production
-  if (!isDev && statusCode === 500) {
-    response.error = 'Internal Server Error';
-  }
 
   res.status(statusCode).json(response);
 };

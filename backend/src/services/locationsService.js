@@ -8,48 +8,28 @@ const { db } = require('../db/connection');
 const { PAGINATION_DEFAULTS } = require('../constants');
 const logger = require('../utils/logger');
 
-/**
- * Get paginated locations with optional filters.
- */
-async function getLocations(filters = {}) {
-  const {
-    state,
-    risk_level,
-    limit = PAGINATION_DEFAULTS.LIMIT,
-    offset = PAGINATION_DEFAULTS.OFFSET,
-  } = filters;
+const buildPagination = (total, limit, offset) => ({
+  total,
+  limit,
+  offset,
+  hasMore: offset + limit < total,
+});
 
-  if (!isSupabaseConfigured) {
-    const baseQuery = db('location_summary');
+const applyLocationFiltersToDbQuery = (query, filters) => {
+  const { state, risk_level } = filters;
 
-    if (state) {
-      baseQuery.where('state', 'ilike', `%${state}%`);
-    }
-    if (risk_level) {
-      baseQuery.where('risk_level', risk_level);
-    }
-
-    const totalResult = await baseQuery.clone().count('* as total').first();
-    const total = parseInt(totalResult?.total || 0, 10);
-
-    const rows = await baseQuery
-      .clone()
-      .orderBy('name')
-      .limit(limit)
-      .offset(offset);
-
-    return {
-      data: rows || [],
-      pagination: {
-        total,
-        limit,
-        offset,
-        hasMore: offset + limit < total,
-      },
-    };
+  if (state) {
+    query.where('state', 'ilike', `%${state}%`);
+  }
+  if (risk_level) {
+    query.where('risk_level', risk_level);
   }
 
-  let query = supabase.from('location_summary').select('*', { count: 'exact' });
+  return query;
+};
+
+const applyLocationFiltersToSupabaseQuery = (query, filters) => {
+  const { state, risk_level } = filters;
 
   if (state) {
     query = query.ilike('state', `%${state}%`);
@@ -58,146 +38,32 @@ async function getLocations(filters = {}) {
     query = query.eq('risk_level', risk_level);
   }
 
-  const { data, count, error } = await query
-    .order('name')
-    .range(offset, offset + limit - 1);
+  return query;
+};
 
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return {
-    data: data || [],
-    pagination: {
-      total: count || 0,
-      limit,
-      offset,
-      hasMore: offset + limit < (count || 0),
-    },
-  };
-}
-
-/**
- * Get unique states list.
- */
-async function getStates() {
-  if (!isSupabaseConfigured) {
-    const rows = await db('locations').distinct('state').orderBy('state');
-    return rows.map((row) => row.state).filter(Boolean);
-  }
-
-  const { data, error } = await supabase
-    .from('locations')
-    .select('state')
-    .order('state');
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return [...new Set((data || []).map((r) => r.state).filter(Boolean))];
-}
-
-/**
- * Get locations as GeoJSON FeatureCollection.
- */
-async function getGeoJSON() {
-  if (!isSupabaseConfigured) {
-    const data = await db('location_summary').select('*').orderBy('name');
-    const features = (data || [])
-      .map((loc) => {
-        const longitude = Number(loc.longitude);
-        const latitude = Number(loc.latitude);
-        if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
-          return null;
-        }
-        return {
-          type: 'Feature',
-          geometry: {
-            type: 'Point',
-            coordinates: [longitude, latitude],
-          },
-          properties: loc,
-        };
-      })
-      .filter(Boolean);
-
-    return { type: 'FeatureCollection', features };
-  }
-
-  const { data, error } = await supabase
-    .from('location_summary')
-    .select('*')
-    .order('name');
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
+const buildGeoJSON = (data) => {
   const features = (data || [])
-    .filter(
-      (loc) =>
-        Number.isFinite(Number(loc.longitude)) &&
-        Number.isFinite(Number(loc.latitude))
-    )
-    .map((loc) => ({
-      type: 'Feature',
-      geometry: {
-        type: 'Point',
-        coordinates: [loc.longitude, loc.latitude],
-      },
-      properties: loc,
-    }));
+    .map((loc) => {
+      const longitude = Number(loc.longitude);
+      const latitude = Number(loc.latitude);
+      if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) {
+        return null;
+      }
+      return {
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: [longitude, latitude],
+        },
+        properties: loc,
+      };
+    })
+    .filter(Boolean);
 
   return { type: 'FeatureCollection', features };
-}
+};
 
-/**
- * Get location statistics summary.
- */
-async function getLocationStats() {
-  if (!isSupabaseConfigured) {
-    const all = await db('location_summary').select(
-      'state',
-      'water_body_type',
-      'avg_wqi_score',
-      'active_alerts'
-    );
-
-    const stateSet = new Set(all.map((r) => r.state).filter(Boolean));
-    const bodyTypeSet = new Set(
-      all.map((r) => r.water_body_type).filter(Boolean)
-    );
-    const locationsWithAlerts = all.filter((r) => r.active_alerts > 0).length;
-    const scoresWithValue = all.filter(
-      (r) => r.avg_wqi_score !== null && r.avg_wqi_score !== undefined
-    );
-    const avgWqi =
-      scoresWithValue.length > 0
-        ? (
-            scoresWithValue.reduce((sum, r) => sum + r.avg_wqi_score, 0) /
-            scoresWithValue.length
-          ).toFixed(2)
-        : null;
-
-    return {
-      total_locations: all.length,
-      states_covered: stateSet.size,
-      water_body_types: [...bodyTypeSet],
-      locations_with_alerts: locationsWithAlerts,
-      average_wqi_score: avgWqi,
-    };
-  }
-
-  const { data, error } = await supabase
-    .from('location_summary')
-    .select('state, water_body_type, avg_wqi_score, active_alerts');
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const all = data || [];
+const computeLocationStats = (all) => {
   const stateSet = new Set(all.map((r) => r.state).filter(Boolean));
   const bodyTypeSet = new Set(
     all.map((r) => r.water_body_type).filter(Boolean)
@@ -221,113 +87,141 @@ async function getLocationStats() {
     locations_with_alerts: locationsWithAlerts,
     average_wqi_score: avgWqi,
   };
-}
+};
 
-/**
- * Get risk level summary counts.
- */
-async function getRiskSummary() {
-  if (!isSupabaseConfigured) {
-    const data = await db('location_summary').select('risk_level');
-    const counts = { safe: 0, moderate: 0, poor: 0, critical: 0, unknown: 0 };
-    for (const row of data || []) {
-      const level = row.risk_level || 'unknown';
-      counts[level] = (counts[level] || 0) + 1;
-    }
-    return counts;
-  }
-
-  const { data, error } = await supabase
-    .from('location_summary')
-    .select('risk_level');
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
+const computeRiskSummary = (data) => {
   const counts = { safe: 0, moderate: 0, poor: 0, critical: 0, unknown: 0 };
   for (const row of data || []) {
     const level = row.risk_level || 'unknown';
     counts[level] = (counts[level] || 0) + 1;
   }
-
   return counts;
-}
+};
 
-/**
- * Search locations by query string.
- */
-async function searchLocations(q, limit = PAGINATION_DEFAULTS.SEARCH_LIMIT) {
+const getLocationsFromDb = async (filters) => {
+  const { limit = PAGINATION_DEFAULTS.LIMIT, offset = PAGINATION_DEFAULTS.OFFSET } =
+    filters;
+  const baseQuery = applyLocationFiltersToDbQuery(
+    db('location_summary'),
+    filters
+  );
+  const totalResult = await baseQuery.clone().count('* as total').first();
+  const total = parseInt(totalResult?.total || 0, 10);
+
+  const rows = await baseQuery
+    .clone()
+    .orderBy('name')
+    .limit(limit)
+    .offset(offset);
+
+  return {
+    data: rows || [],
+    pagination: buildPagination(total, limit, offset),
+  };
+};
+
+const getLocationsFromSupabase = async (filters) => {
+  const { limit = PAGINATION_DEFAULTS.LIMIT, offset = PAGINATION_DEFAULTS.OFFSET } =
+    filters;
+  let query = supabase.from('location_summary').select('*', { count: 'exact' });
+
+  query = applyLocationFiltersToSupabaseQuery(query, filters);
+
+  const { data, count, error } = await query
+    .order('name')
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return {
+    data: data || [],
+    pagination: buildPagination(count || 0, limit, offset),
+  };
+};
+
+const getLocationSummaryRows = async () => {
   if (!isSupabaseConfigured) {
-    const query = db('location_summary').select('*');
-    if (q) {
-      query.where('name', 'ilike', `%${q}%`);
-    }
-    const data = await query.orderBy('name').limit(limit);
-    return data || [];
+    return db('location_summary').select('*').orderBy('name');
   }
 
-  let query = supabase.from('location_summary').select('*');
-
-  if (q) {
-    query = query.ilike('name', `%${q}%`);
-  }
-
-  const { data, error } = await query.order('name').limit(limit);
+  const { data, error } = await supabase
+    .from('location_summary')
+    .select('*')
+    .order('name');
 
   if (error) {
     throw new Error(error.message);
   }
 
   return data || [];
-}
+};
 
-/**
- * Get a specific location with latest readings.
- */
-async function getLocationById(id) {
+const getLocationStatsRows = async () => {
   if (!isSupabaseConfigured) {
-    const location = await db('locations').select('*').where('id', id).first();
-
-    if (!location) {
-      return null;
-    }
-
-    const readings = await db('water_quality_readings as wqr')
-      .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id')
-      .select(
-        'wqr.id as id',
-        'wqp.parameter_name as parameter',
-        'wqp.parameter_code as parameter_code',
-        'wqr.value as value',
-        'wqp.unit as unit',
-        'wqr.measurement_date as measurement_date',
-        'wqr.risk_level as risk_level',
-        'wqr.quality_score as quality_score',
-        'wqr.source as source'
-      )
-      .where('wqr.location_id', id)
-      .orderBy('wqr.measurement_date', 'desc')
-      .limit(PAGINATION_DEFAULTS.LOCATION_READINGS_LIMIT);
-
-    let summary = null;
-    try {
-      summary = await db('location_summary').select('*').where('id', id).first();
-    } catch (error) {
-      logger.warn('Failed to fetch location summary', {
-        locationId: id,
-        error: error?.message,
-      });
-    }
-
-    return {
-      ...location,
-      wqi_score: summary?.avg_wqi_score ?? null,
-      risk_level: summary?.risk_level ?? null,
-      latest_readings: readings || [],
-    };
+    return db('location_summary').select(
+      'state',
+      'water_body_type',
+      'avg_wqi_score',
+      'active_alerts'
+    );
   }
 
+  const { data, error } = await supabase
+    .from('location_summary')
+    .select('state, water_body_type, avg_wqi_score, active_alerts');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data || [];
+};
+
+const getLocationByIdFromDb = async (id) => {
+  const location = await db('locations').select('*').where('id', id).first();
+
+  if (!location) {
+    return null;
+  }
+
+  const readings = await db('water_quality_readings as wqr')
+    .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id')
+    .select(
+      'wqr.id as id',
+      'wqp.parameter_name as parameter',
+      'wqp.parameter_code as parameter_code',
+      'wqr.value as value',
+      'wqp.unit as unit',
+      'wqr.measurement_date as measurement_date',
+      'wqr.risk_level as risk_level',
+      'wqr.quality_score as quality_score',
+      'wqr.source as source'
+    )
+    .where('wqr.location_id', id)
+    .orderBy('wqr.measurement_date', 'desc')
+    .limit(PAGINATION_DEFAULTS.LOCATION_READINGS_LIMIT);
+
+  let summary = null;
+  try {
+    summary = await db('location_summary').select('*').where('id', id).first();
+  } catch (error) {
+    logger.warn('Failed to fetch location summary', {
+      locationId: id,
+      error: error?.message,
+    });
+  }
+
+  return {
+    ...location,
+    wqi_score: summary?.avg_wqi_score ?? null,
+    risk_level: summary?.risk_level ?? null,
+    latest_readings: readings || [],
+  };
+};
+
+const getLocationByIdFromSupabase = async (id) => {
   const { data: location, error: locError } = await supabase
     .from('locations')
     .select('*')
@@ -366,7 +260,6 @@ async function getLocationById(id) {
 
   if (summaryError) {
     // Log but don't fail — summary is supplemental data
-    const logger = require('../utils/logger');
     logger.warn('Failed to fetch location summary', {
       locationId: id,
       error: summaryError.message,
@@ -391,6 +284,113 @@ async function getLocationById(id) {
     risk_level: summary?.risk_level ?? null,
     latest_readings: latestReadings,
   };
+};
+
+/**
+ * Get paginated locations with optional filters.
+ */
+async function getLocations(filters = {}) {
+  if (!isSupabaseConfigured) {
+    return getLocationsFromDb(filters);
+  }
+
+  return getLocationsFromSupabase(filters);
+}
+
+/**
+ * Get unique states list.
+ */
+async function getStates() {
+  if (!isSupabaseConfigured) {
+    const rows = await db('locations').distinct('state').orderBy('state');
+    return rows.map((row) => row.state).filter(Boolean);
+  }
+
+  const { data, error } = await supabase
+    .from('locations')
+    .select('state')
+    .order('state');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return [...new Set((data || []).map((r) => r.state).filter(Boolean))];
+}
+
+/**
+ * Get locations as GeoJSON FeatureCollection.
+ */
+async function getGeoJSON() {
+  const data = await getLocationSummaryRows();
+  return buildGeoJSON(data);
+}
+
+/**
+ * Get location statistics summary.
+ */
+async function getLocationStats() {
+  const all = await getLocationStatsRows();
+  return computeLocationStats(all);
+}
+
+/**
+ * Get risk level summary counts.
+ */
+async function getRiskSummary() {
+  if (!isSupabaseConfigured) {
+    const data = await db('location_summary').select('risk_level');
+    return computeRiskSummary(data);
+  }
+
+  const { data, error } = await supabase
+    .from('location_summary')
+    .select('risk_level');
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return computeRiskSummary(data);
+}
+
+/**
+ * Search locations by query string.
+ */
+async function searchLocations(q, limit = PAGINATION_DEFAULTS.SEARCH_LIMIT) {
+  if (!isSupabaseConfigured) {
+    const query = db('location_summary').select('*');
+    if (q) {
+      query.where('name', 'ilike', `%${q}%`);
+    }
+    const data = await query.orderBy('name').limit(limit);
+    return data || [];
+  }
+
+  let query = supabase.from('location_summary').select('*');
+
+  if (q) {
+    query = query.ilike('name', `%${q}%`);
+  }
+
+  const { data, error } = await query.order('name').limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data || [];
+}
+
+/**
+ * Get a specific location with latest readings.
+ */
+async function getLocationById(id) {
+  if (!isSupabaseConfigured) {
+    return getLocationByIdFromDb(id);
+  }
+
+  return getLocationByIdFromSupabase(id);
 }
 
 module.exports = {

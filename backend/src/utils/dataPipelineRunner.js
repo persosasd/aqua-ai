@@ -74,7 +74,7 @@ const startDataPipeline = () => {
     return;
   }
 
-  const pythonCommand = process.env.DATA_PIPELINE_PYTHON || 'python';
+  const pythonCommand = process.env.DATA_PIPELINE_PYTHON || 'python3';
   logger.info('Starting data pipeline on startup', {
     scriptPath,
     pythonCommand,

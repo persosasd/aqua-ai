@@ -343,12 +343,12 @@ async function getReadingsByLocation(locationId, filters = {}) {
     .order('measurement_date', { ascending: false })
     .limit(limit);
 
-    if (parameter) {
-      query = query.eq(
-        'water_quality_parameters.parameter_code',
-        String(parameter).toUpperCase()
-      );
-    }
+  if (parameter) {
+    query = query.eq(
+      'water_quality_parameters.parameter_code',
+      String(parameter).toUpperCase()
+    );
+  }
 
   const { data, error } = await query;
   if (error) {

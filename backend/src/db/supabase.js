@@ -60,6 +60,17 @@ const createMockClient = () => ({
   from: (table) => createMockQuery(table),
 });
 
+if (
+  !isTestEnv &&
+  process.env.DATABASE_URL &&
+  !process.env.SUPABASE_URL &&
+  !SUPABASE_URL
+) {
+  logger.warn(
+    'Unable to derive SUPABASE_URL from DATABASE_URL. Set SUPABASE_URL explicitly for custom domains.'
+  );
+}
+
 const isSupabaseConfigured = isTestEnv || Boolean(SUPABASE_URL && SUPABASE_KEY);
 
 if (!isSupabaseConfigured && !isTestEnv) {

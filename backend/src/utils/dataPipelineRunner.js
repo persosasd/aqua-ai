@@ -81,9 +81,27 @@ const startDataPipeline = () => {
   });
 
   const child = spawn(pythonCommand, [scriptPath], {
-    stdio: 'inherit',
+    stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
   });
+
+  if (child.stdout) {
+    child.stdout.on('data', (chunk) => {
+      const output = chunk.toString().trim();
+      if (output) {
+        logger.info('Data pipeline output', { output });
+      }
+    });
+  }
+
+  if (child.stderr) {
+    child.stderr.on('data', (chunk) => {
+      const output = chunk.toString().trim();
+      if (output) {
+        logger.warn('Data pipeline error output', { output });
+      }
+    });
+  }
 
   child.on('error', (error) => {
     logger.error('Failed to start data pipeline', {

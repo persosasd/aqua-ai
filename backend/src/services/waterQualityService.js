@@ -310,7 +310,7 @@ async function getReadingsByLocation(locationId, filters = {}) {
       .where('wqr.location_id', locationId);
 
     if (parameter) {
-      baseQuery.where('wqp.parameter_code', parameter.toUpperCase());
+      baseQuery.where('wqp.parameter_code', String(parameter).toUpperCase());
     }
 
     const rows = await baseQuery
@@ -343,12 +343,12 @@ async function getReadingsByLocation(locationId, filters = {}) {
     .order('measurement_date', { ascending: false })
     .limit(limit);
 
-  if (parameter) {
-    query = query.eq(
-      'water_quality_parameters.parameter_code',
-      parameter.toUpperCase()
-    );
-  }
+    if (parameter) {
+      query = query.eq(
+        'water_quality_parameters.parameter_code',
+        String(parameter).toUpperCase()
+      );
+    }
 
   const { data, error } = await query;
   if (error) {

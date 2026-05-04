@@ -40,7 +40,7 @@ async function getAlerts(filters = {}) {
       baseQuery.where('a.location_id', location_id);
     }
     if (parameter) {
-      baseQuery.where('wqp.parameter_code', parameter.toUpperCase());
+      baseQuery.where('wqp.parameter_code', String(parameter).toUpperCase());
     }
     if (alert_type) {
       baseQuery.where('a.alert_type', alert_type);
@@ -112,7 +112,7 @@ async function getAlerts(filters = {}) {
   if (parameter) {
     query = query.eq(
       'water_quality_parameters.parameter_code',
-      parameter.toUpperCase()
+      String(parameter).toUpperCase()
     );
   }
   if (alert_type) {

@@ -39,7 +39,10 @@ async function getReadings(filters = {}) {
     if (Number.isFinite(parsedId)) {
       query = query.eq('location_id', parsedId);
     } else {
-      query = query.ilike('locations.name', `%${sanitizeLikeSearch(location_id)}%`);
+      query = query.ilike(
+        'locations.name',
+        `%${sanitizeLikeSearch(location_id)}%`
+      );
     }
   }
 

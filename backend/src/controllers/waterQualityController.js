@@ -68,7 +68,10 @@ const getById = asyncHandler(async (req, res) => {
   const data = await waterQualityService.getReadingById(req.params.id);
 
   if (!data) {
-    throw new APIError('Water quality reading not found', HTTP_STATUS.NOT_FOUND);
+    throw new APIError(
+      'Water quality reading not found',
+      HTTP_STATUS.NOT_FOUND
+    );
   }
 
   res.json({ success: true, data });

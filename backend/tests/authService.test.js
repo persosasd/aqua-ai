@@ -87,7 +87,10 @@ describe('authService.loginUser', () => {
 
     await expect(
       authService.loginUser({ email: 'nobody@example.com', password: 'pass' })
-    ).rejects.toMatchObject({ statusCode: 401, message: /invalid credentials/i });
+    ).rejects.toMatchObject({
+      statusCode: 401,
+      message: /invalid credentials/i,
+    });
   });
 
   it('throws 401 when the password is wrong', async () => {
@@ -95,7 +98,10 @@ describe('authService.loginUser', () => {
     User.verifyPassword.mockResolvedValue(false);
 
     await expect(
-      authService.loginUser({ email: 'alice@example.com', password: 'WrongPass1' })
+      authService.loginUser({
+        email: 'alice@example.com',
+        password: 'WrongPass1',
+      })
     ).rejects.toMatchObject({ statusCode: 401 });
   });
 
@@ -142,7 +148,12 @@ describe('authService.getUserProfile', () => {
   });
 
   it('returns the user when found', async () => {
-    const profile = { id: 1, email: 'alice@example.com', name: 'Alice', role: 'user' };
+    const profile = {
+      id: 1,
+      email: 'alice@example.com',
+      name: 'Alice',
+      role: 'user',
+    };
     User.findById.mockResolvedValue(profile);
 
     const result = await authService.getUserProfile(1);
@@ -170,7 +181,11 @@ describe('authService.updateUserProfile', () => {
   });
 
   it('does not check for email conflict when email is unchanged', async () => {
-    const updated = { id: 1, email: 'alice@example.com', name: 'Alice Updated' };
+    const updated = {
+      id: 1,
+      email: 'alice@example.com',
+      name: 'Alice Updated',
+    };
     User.update.mockResolvedValue(updated);
 
     const result = await authService.updateUserProfile(

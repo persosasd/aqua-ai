@@ -14,6 +14,13 @@ services:
       - ./backend/database/schema.sql:/docker-entrypoint-initdb.d/schema.sql
     networks:
       - aqua-ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Backend API Server
   backend:
@@ -26,12 +33,17 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://${DB_USER:?DB_USER is required}:${DB_PASSWORD:?DB_PASSWORD is required}@database:5432/${DB_NAME:?DB_NAME is required}
-      - FRONTEND_URL=http://localhost:3000
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET is required}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - PORT=${PORT:-5000}
     command: ['sh', '-c', 'npm run migrate && npm start']
     depends_on:
-      - database
+      database:
+        condition: service_healthy
     networks:
       - aqua-ai-network
+    restart: unless-stopped
 
   # Frontend React Application (Vite)
   frontend:
@@ -43,12 +55,11 @@ services:
     container_name: aqua-ai-frontend
     ports:
       - '3000:3000'
-    environment:
-      - VITE_API_URL=/api
     depends_on:
       - backend
     networks:
       - aqua-ai-network
+    restart: unless-stopped
 
   # Python Data Pipeline and AI Models
   ai-pipeline:
@@ -63,7 +74,8 @@ services:
       - WEATHER_API_KEY=${WEATHER_API_KEY}
       - ALLOW_SAMPLE_DATA=${ALLOW_SAMPLE_DATA:-false}
     depends_on:
-      - database
+      database:
+        condition: service_healthy
     volumes:
       - ./ai-models:/app/ai-models
       - ./data-pipeline:/app/data-pipeline
@@ -71,6 +83,7 @@ services:
     networks:
       - aqua-ai-network
     command: ['python', '/app/data-pipeline/fetch_data.py']
+    restart: on-failure
 
   # Redis for caching (optional)
   redis:
@@ -80,6 +93,12 @@ services:
       - '6379:6379'
     networks:
       - aqua-ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:

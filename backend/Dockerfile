@@ -7,10 +7,8 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files and install only production dependencies (skip SQLite for Docker)
 COPY --chown=appuser:appgroup package*.json ./
-
-# Install only production dependencies (skip SQLite for Docker)
 RUN npm ci --omit=dev --ignore-scripts && \
   npm cache clean --force
 

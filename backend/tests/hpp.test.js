@@ -23,6 +23,7 @@ jest.mock('../src/db/supabase', () => ({
   supabase: {
     from: jest.fn(() => createQuery()),
   },
+  isSupabaseConfigured: true,
 }));
 
 jest.mock('../src/middleware/auth', () => ({

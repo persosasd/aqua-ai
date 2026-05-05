@@ -242,22 +242,16 @@ const finalizeAlertUpdate = ({
   throw new APIError(invalidMessage, 400);
 };
 
-const performAlertStateUpdate = async (
-  id,
-  payload,
-  dbConditionFn,
-  sbConditionFn,
-  opts
-) => {
+const performAlertStateUpdate = async (id, payload, conditions, opts) => {
   if (!isSupabaseConfigured) {
-    const updatedCount = await dbConditionFn(db('alerts').where('id', id)).update(payload);
+    const updatedCount = await conditions.db(db('alerts').where('id', id)).update(payload);
     const updated =
       updatedCount > 0 ? await db('alerts').where('id', id).first() : null;
     const existing = updated ? null : await fetchAlertStatusFromDb(id);
     return finalizeAlertUpdate({ updated, existing, id, ...opts });
   }
 
-  const { data: updated, error } = await sbConditionFn(
+  const { data: updated, error } = await conditions.sb(
     supabase.from('alerts').update(payload).eq('id', id)
   )
     .select()
@@ -330,34 +324,19 @@ const computeAvgResolutionHours = (result) => {
   return (parseFloat(result.avg_time) / 3600).toFixed(2);
 };
 
-/**
- * Get alert statistics with server-side aggregations.
- */
-async function getAlertStats(filters = {}) {
-  const { start_date, end_date } = filters;
-
-  const baseQuery = db('alerts as a').join(
+const buildAlertStatsBaseQuery = (start_date, end_date) => {
+  const q = db('alerts as a').join(
     'water_quality_parameters as wqp',
     'a.parameter_id',
     'wqp.id'
   );
+  if (start_date) q.where('a.triggered_at', '>=', start_date);
+  if (end_date) q.where('a.triggered_at', '<=', end_date);
+  return q;
+};
 
-  if (start_date) {
-    baseQuery.where('a.triggered_at', '>=', start_date);
-  }
-  if (end_date) {
-    baseQuery.where('a.triggered_at', '<=', end_date);
-  }
-
-  const [
-    totalResult,
-    statusResult,
-    severityResult,
-    alertTypeResult,
-    locationsResult,
-    parametersResult,
-    avgResolutionResult,
-  ] = await Promise.all([
+const runAlertStatsQueries = (baseQuery) =>
+  Promise.all([
     baseQuery.clone().count('a.id as total').first(),
     baseQuery
       .clone()
@@ -395,6 +374,23 @@ async function getAlertStats(filters = {}) {
       )
       .first(),
   ]);
+
+/**
+ * Get alert statistics with server-side aggregations.
+ */
+async function getAlertStats(filters = {}) {
+  const { start_date, end_date } = filters;
+  const baseQuery = buildAlertStatsBaseQuery(start_date, end_date);
+
+  const [
+    totalResult,
+    statusResult,
+    severityResult,
+    alertTypeResult,
+    locationsResult,
+    parametersResult,
+    avgResolutionResult,
+  ] = await runAlertStatsQueries(baseQuery);
 
   const statusCounts = aggregateCounts(statusResult, 'status', {
     active: 0,
@@ -450,8 +446,10 @@ async function resolveAlert(id, resolutionNotes, userId) {
       resolved_at: new Date().toISOString(),
       resolution_notes: resolutionNotes || null,
     },
-    (q) => q.whereNot('status', ALERT_STATUS.RESOLVED),
-    (q) => q.neq('status', ALERT_STATUS.RESOLVED),
+    {
+      db: (q) => q.whereNot('status', ALERT_STATUS.RESOLVED),
+      sb: (q) => q.neq('status', ALERT_STATUS.RESOLVED),
+    },
     {
       logMessage: 'Alert resolved',
       userId,
@@ -472,8 +470,10 @@ async function dismissAlert(id, dismissalReason, userId) {
       status: ALERT_STATUS.DISMISSED,
       dismissal_reason: dismissalReason || null,
     },
-    (q) => q.where('status', ALERT_STATUS.ACTIVE),
-    (q) => q.eq('status', ALERT_STATUS.ACTIVE),
+    {
+      db: (q) => q.where('status', ALERT_STATUS.ACTIVE),
+      sb: (q) => q.eq('status', ALERT_STATUS.ACTIVE),
+    },
     {
       logMessage: 'Alert dismissed',
       userId,

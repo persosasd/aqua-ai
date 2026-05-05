@@ -71,6 +71,40 @@ const applyReadingsFilters = (query, filters, isSupabase) => {
   );
 };
 
+const mapParameterRow = (p) => ({
+  code: p.parameter_code,
+  name: p.parameter_name,
+  unit: p.unit,
+  safe_limit: p.safe_limit,
+  moderate_limit: p.moderate_limit,
+  high_limit: p.high_limit,
+  critical_limit: p.critical_limit,
+  description: p.description,
+});
+
+const buildReadingsStatsBaseQuery = (state, parameter) => {
+  const q = db('water_quality_readings as wqr')
+    .join('locations as l', 'wqr.location_id', 'l.id')
+    .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id');
+  if (state) q.where('l.state', 'ilike', `%${state}%`);
+  if (parameter) q.where('wqp.parameter_code', '=', String(parameter).toUpperCase());
+  return q;
+};
+
+const computeRiskLevelCounts = (rows) => {
+  const counts = { low: 0, medium: 0, high: 0, critical: 0 };
+  for (const row of rows) {
+    if (row.risk_level && counts[row.risk_level] !== undefined) {
+      counts[row.risk_level] = parseInt(row.count || 0, 10);
+    }
+  }
+  return counts;
+};
+
+const computeAvgQualityScore = (result) => {
+  if (result?.avg_score == null) return null;
+  return Number(result.avg_score).toFixed(2);
+};
 const mapReadingsFromSupabase = (data) =>
   (data || []).map((row) => ({
     id: row.id,
@@ -334,16 +368,7 @@ async function getParameters() {
       )
       .orderBy('parameter_code');
 
-    return (rows || []).map((p) => ({
-      code: p.parameter_code,
-      name: p.parameter_name,
-      unit: p.unit,
-      safe_limit: p.safe_limit,
-      moderate_limit: p.moderate_limit,
-      high_limit: p.high_limit,
-      critical_limit: p.critical_limit,
-      description: p.description,
-    }));
+    return (rows || []).map(mapParameterRow);
   }
 
   const { data, error } = await supabase
@@ -357,16 +382,7 @@ async function getParameters() {
     throw new Error(error.message);
   }
 
-  return (data || []).map((p) => ({
-    code: p.parameter_code,
-    name: p.parameter_name,
-    unit: p.unit,
-    safe_limit: p.safe_limit,
-    moderate_limit: p.moderate_limit,
-    high_limit: p.high_limit,
-    critical_limit: p.critical_limit,
-    description: p.description,
-  }));
+  return (data || []).map(mapParameterRow);
 }
 
 /**
@@ -376,18 +392,7 @@ async function getParameters() {
  */
 async function getStats(filters = {}) {
   const { state, parameter } = filters;
-
-  const baseQuery = db('water_quality_readings as wqr')
-    .join('locations as l', 'wqr.location_id', 'l.id')
-    .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id');
-
-  if (state) {
-    baseQuery.where('l.state', 'ilike', `%${state}%`);
-  }
-
-  if (parameter) {
-    baseQuery.where('wqp.parameter_code', '=', String(parameter).toUpperCase());
-  }
+  const baseQuery = buildReadingsStatsBaseQuery(state, parameter);
 
   const [
     totalResult,
@@ -413,24 +418,10 @@ async function getStats(filters = {}) {
     baseQuery.clone().max('wqr.measurement_date as latest_date').first(),
   ]);
 
-  const totalCount = parseInt(totalResult?.total || 0, 10);
-
-  const riskLevelCounts = { low: 0, medium: 0, high: 0, critical: 0 };
-  for (const row of riskResult) {
-    if (row.risk_level && riskLevelCounts[row.risk_level] !== undefined) {
-      riskLevelCounts[row.risk_level] = parseInt(row.count || 0, 10);
-    }
-  }
-
-  const avgScore =
-    avgResult?.avg_score !== null && avgResult?.avg_score !== undefined
-      ? Number(avgResult.avg_score).toFixed(2)
-      : null;
-
   return {
-    total_readings: totalCount,
-    risk_level_distribution: riskLevelCounts,
-    average_quality_score: avgScore,
+    total_readings: parseInt(totalResult?.total || 0, 10),
+    risk_level_distribution: computeRiskLevelCounts(riskResult),
+    average_quality_score: computeAvgQualityScore(avgResult),
     parameters_monitored: paramsResult.map((row) => row.parameter_code),
     states_monitored: statesResult.map((row) => row.state),
     latest_reading: latestResult?.latest_date || null,

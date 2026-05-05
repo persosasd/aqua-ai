@@ -6,6 +6,7 @@
 const { supabase, isSupabaseConfigured } = require('../db/supabase');
 const { db } = require('../db/connection');
 const { PAGINATION_DEFAULTS } = require('../constants');
+const { sanitizeLikeSearch } = require('../utils/security');
 
 const buildPagination = (total, limit, offset) => ({
   total,
@@ -71,22 +72,22 @@ const applyReadingsFilters = (query, filters, isSupabase) => {
   );
 };
 
-const mapParameterRow = (p) => ({
-  code: p.parameter_code,
-  name: p.parameter_name,
-  unit: p.unit,
-  safe_limit: p.safe_limit,
-  moderate_limit: p.moderate_limit,
-  high_limit: p.high_limit,
-  critical_limit: p.critical_limit,
-  description: p.description,
+const mapParameterRow = (row) => ({
+  code: row.parameter_code,
+  name: row.parameter_name,
+  unit: row.unit,
+  safe_limit: row.safe_limit,
+  moderate_limit: row.moderate_limit,
+  high_limit: row.high_limit,
+  critical_limit: row.critical_limit,
+  description: row.description,
 });
 
 const buildReadingsStatsBaseQuery = (state, parameter) => {
   const q = db('water_quality_readings as wqr')
     .join('locations as l', 'wqr.location_id', 'l.id')
     .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id');
-  if (state) q.where('l.state', 'ilike', `%${state}%`);
+  if (state) q.where('l.state', 'ilike', `%${sanitizeLikeSearch(state)}%`);
   if (parameter) q.where('wqp.parameter_code', '=', String(parameter).toUpperCase());
   return q;
 };

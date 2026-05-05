@@ -3,8 +3,6 @@
  * Mocks User model and generateToken so tests run without a real DB.
  */
 
-const { APIError } = require('../src/middleware/errorHandler');
-
 // --- Mocks (must be declared before requiring the service) ---
 
 const mockUser = {

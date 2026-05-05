@@ -169,6 +169,20 @@ const getAlertByIdFromDb = async (id) => {
   return data || null;
 };
 
+const mapAlertDetails = (data) => ({
+  ...data,
+  location_name: data.locations?.name,
+  state: data.locations?.state,
+  district: data.locations?.district,
+  latitude: data.locations?.latitude,
+  longitude: data.locations?.longitude,
+  parameter: data.water_quality_parameters?.parameter_name,
+  parameter_code: data.water_quality_parameters?.parameter_code,
+  unit: data.water_quality_parameters?.unit,
+  locations: undefined,
+  water_quality_parameters: undefined,
+});
+
 const getAlertByIdFromSupabase = async (id) => {
   const { data, error } = await supabase
     .from('alerts')
@@ -190,19 +204,7 @@ const getAlertByIdFromSupabase = async (id) => {
     return null;
   }
 
-  return {
-    ...data,
-    location_name: data.locations?.name,
-    state: data.locations?.state,
-    district: data.locations?.district,
-    latitude: data.locations?.latitude,
-    longitude: data.locations?.longitude,
-    parameter: data.water_quality_parameters?.parameter_name,
-    parameter_code: data.water_quality_parameters?.parameter_code,
-    unit: data.water_quality_parameters?.unit,
-    locations: undefined,
-    water_quality_parameters: undefined,
-  };
+  return mapAlertDetails(data);
 };
 
 const fetchAlertStatusFromDb = (id) =>
@@ -271,23 +273,18 @@ async function getAlerts(filters = {}) {
   return getAlertsFromSupabase(filters);
 }
 
-/**
- * Get active alerts.
- */
-async function getActiveAlerts(filters = {}) {
-  const { severity, limit = 50 } = filters;
+const getActiveAlertsFromDb = async (severity, limit) => {
+  let query = db('active_alerts').select('*');
 
-  if (!isSupabaseConfigured) {
-    let query = db('active_alerts').select('*');
-
-    if (severity) {
-      query = query.where('severity', severity);
-    }
-
-    const data = await query.orderBy('triggered_at', 'desc').limit(limit);
-    return data || [];
+  if (severity) {
+    query = query.where('severity', severity);
   }
 
+  const data = await query.orderBy('triggered_at', 'desc').limit(limit);
+  return data || [];
+};
+
+const getActiveAlertsFromSupabase = async (severity, limit) => {
   let query = supabase.from('active_alerts').select('*');
 
   if (severity) {
@@ -303,6 +300,19 @@ async function getActiveAlerts(filters = {}) {
   }
 
   return data || [];
+};
+
+/**
+ * Get active alerts.
+ */
+async function getActiveAlerts(filters = {}) {
+  const { severity, limit = 50 } = filters;
+
+  if (!isSupabaseConfigured) {
+    return getActiveAlertsFromDb(severity, limit);
+  }
+
+  return getActiveAlertsFromSupabase(severity, limit);
 }
 
 const aggregateCounts = (rows, keyField, seed) => {

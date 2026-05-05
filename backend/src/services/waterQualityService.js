@@ -11,17 +11,17 @@ const { buildPagination } = require('../utils/pagination');
 
 const applyLocationIdFilter = (query, locationId, isSupabase) => {
   const parsed = Number(locationId);
+  const isNumeric = Number.isFinite(parsed);
+
   if (isSupabase) {
-    return Number.isFinite(parsed)
+    return isNumeric
       ? query.eq('location_id', parsed)
       : query.ilike('locations.name', `%${locationId}%`);
   }
-  if (Number.isFinite(parsed)) {
-    query.where('wqr.location_id', parsed);
-  } else {
-    query.where('l.name', 'ilike', `%${locationId}%`);
-  }
-  return query;
+
+  return isNumeric
+    ? query.where('wqr.location_id', parsed)
+    : query.where('l.name', 'ilike', `%${locationId}%`);
 };
 
 const READINGS_FILTER_RULES = [
@@ -229,6 +229,18 @@ const getReadingsByLocationFromDb = async (locationId, filters) => {
   return rows || [];
 };
 
+const mapLocationReadingsRow = (row) => ({
+  id: row.id,
+  parameter: row.water_quality_parameters?.parameter_name,
+  parameter_code: row.water_quality_parameters?.parameter_code,
+  value: row.value,
+  unit: row.water_quality_parameters?.unit,
+  measurement_date: row.measurement_date,
+  risk_level: row.risk_level,
+  quality_score: row.quality_score,
+  source: row.source,
+});
+
 const getReadingsByLocationFromSupabase = async (locationId, filters) => {
   const { parameter, limit = PAGINATION_DEFAULTS.SMALL_LIMIT } = filters;
   let query = supabase
@@ -255,17 +267,7 @@ const getReadingsByLocationFromSupabase = async (locationId, filters) => {
     throw new Error(error.message);
   }
 
-  return (data || []).map((row) => ({
-    id: row.id,
-    parameter: row.water_quality_parameters?.parameter_name,
-    parameter_code: row.water_quality_parameters?.parameter_code,
-    value: row.value,
-    unit: row.water_quality_parameters?.unit,
-    measurement_date: row.measurement_date,
-    risk_level: row.risk_level,
-    quality_score: row.quality_score,
-    source: row.source,
-  }));
+  return (data || []).map(mapLocationReadingsRow);
 };
 
 const getReadingByIdFromDb = async (id) => {
@@ -298,6 +300,27 @@ const getReadingByIdFromDb = async (id) => {
   return row || null;
 };
 
+const mapReadingByIdFromSupabase = (data) => ({
+  id: data.id,
+  location_id: data.locations?.id,
+  location_name: data.locations?.name,
+  state: data.locations?.state,
+  district: data.locations?.district,
+  latitude: data.locations?.latitude,
+  longitude: data.locations?.longitude,
+  parameter: data.water_quality_parameters?.parameter_name,
+  parameter_code: data.water_quality_parameters?.parameter_code,
+  value: data.value,
+  unit: data.water_quality_parameters?.unit,
+  measurement_date: data.measurement_date,
+  risk_level: data.risk_level,
+  quality_score: data.quality_score,
+  source: data.source,
+  is_validated: data.is_validated,
+  validation_notes: data.validation_notes,
+  created_at: data.created_at,
+});
+
 const getReadingByIdFromSupabase = async (id) => {
   const { data, error } = await supabase
     .from('water_quality_readings')
@@ -320,26 +343,7 @@ const getReadingByIdFromSupabase = async (id) => {
     return null;
   }
 
-  return {
-    id: data.id,
-    location_id: data.locations?.id,
-    location_name: data.locations?.name,
-    state: data.locations?.state,
-    district: data.locations?.district,
-    latitude: data.locations?.latitude,
-    longitude: data.locations?.longitude,
-    parameter: data.water_quality_parameters?.parameter_name,
-    parameter_code: data.water_quality_parameters?.parameter_code,
-    value: data.value,
-    unit: data.water_quality_parameters?.unit,
-    measurement_date: data.measurement_date,
-    risk_level: data.risk_level,
-    quality_score: data.quality_score,
-    source: data.source,
-    is_validated: data.is_validated,
-    validation_notes: data.validation_notes,
-    created_at: data.created_at,
-  };
+  return mapReadingByIdFromSupabase(data);
 };
 
 /**

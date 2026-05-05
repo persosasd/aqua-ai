@@ -217,22 +217,21 @@ const getLocationByIdFromDb = async (id) => {
   };
 };
 
-const getLocationByIdFromSupabase = async (id) => {
-  const { data: location, error: locError } = await supabase
+const fetchSupabaseLocation = async (id) => {
+  const { data, error } = await supabase
     .from('locations')
     .select('*')
     .eq('id', id)
     .maybeSingle();
 
-  if (locError) {
-    throw new Error(locError.message);
+  if (error) {
+    throw new Error(error.message);
   }
+  return data;
+};
 
-  if (!location) {
-    return null;
-  }
-
-  const { data: readings, error: readingsError } = await supabase
+const fetchSupabaseLocationReadings = async (id) => {
+  const { data, error } = await supabase
     .from('water_quality_readings')
     .select(
       `
@@ -244,25 +243,30 @@ const getLocationByIdFromSupabase = async (id) => {
     .order('measurement_date', { ascending: false })
     .limit(PAGINATION_DEFAULTS.LOCATION_READINGS_LIMIT);
 
-  if (readingsError) {
-    throw new Error(readingsError.message);
+  if (error) {
+    throw new Error(error.message);
   }
+  return data;
+};
 
-  const { data: summary, error: summaryError } = await supabase
+const fetchSupabaseLocationSummary = async (id) => {
+  const { data, error } = await supabase
     .from('location_summary')
     .select('*')
     .eq('id', id)
     .maybeSingle();
 
-  if (summaryError) {
-    // Log but don't fail — summary is supplemental data
+  if (error) {
     logger.warn('Failed to fetch location summary', {
       locationId: id,
-      error: summaryError.message,
+      error: error.message,
     });
   }
+  return data;
+};
 
-  const latestReadings = (readings || []).map((row) => ({
+const mapLocationReadings = (readings) => {
+  return (readings || []).map((row) => ({
     id: row.id,
     parameter: row.water_quality_parameters?.parameter_name,
     parameter_code: row.water_quality_parameters?.parameter_code,
@@ -273,12 +277,23 @@ const getLocationByIdFromSupabase = async (id) => {
     quality_score: row.quality_score,
     source: row.source,
   }));
+};
+
+const getLocationByIdFromSupabase = async (id) => {
+  const location = await fetchSupabaseLocation(id);
+
+  if (!location) {
+    return null;
+  }
+
+  const readings = await fetchSupabaseLocationReadings(id);
+  const summary = await fetchSupabaseLocationSummary(id);
 
   return {
     ...location,
     wqi_score: summary?.avg_wqi_score ?? null,
     risk_level: summary?.risk_level ?? null,
-    latest_readings: latestReadings,
+    latest_readings: mapLocationReadings(readings),
   };
 };
 
@@ -350,23 +365,17 @@ async function getRiskSummary() {
   return computeRiskSummary(data);
 }
 
-/**
- * Search locations by query string.
- */
-async function searchLocations(q, limit = PAGINATION_DEFAULTS.SEARCH_LIMIT) {
-  const sanitized = q ? sanitizeLikeSearch(q) : null;
-
-  if (!isSupabaseConfigured) {
-    const query = db('location_summary').select('*');
-    if (sanitized) {
-      query.where('name', 'ilike', `%${sanitized}%`);
-    }
-    const data = await query.orderBy('name').limit(limit);
-    return data || [];
+const searchLocationsFromDb = async (sanitized, limit) => {
+  const query = db('location_summary').select('*');
+  if (sanitized) {
+    query.where('name', 'ilike', `%${sanitized}%`);
   }
+  const data = await query.orderBy('name').limit(limit);
+  return data || [];
+};
 
+const searchLocationsFromSupabase = async (sanitized, limit) => {
   let query = supabase.from('location_summary').select('*');
-
   if (sanitized) {
     query = query.ilike('name', `%${sanitized}%`);
   }
@@ -378,6 +387,19 @@ async function searchLocations(q, limit = PAGINATION_DEFAULTS.SEARCH_LIMIT) {
   }
 
   return data || [];
+};
+
+/**
+ * Search locations by query string.
+ */
+async function searchLocations(q, limit = PAGINATION_DEFAULTS.SEARCH_LIMIT) {
+  const sanitized = q ? sanitizeLikeSearch(q) : null;
+
+  if (!isSupabaseConfigured) {
+    return searchLocationsFromDb(sanitized, limit);
+  }
+
+  return searchLocationsFromSupabase(sanitized, limit);
 }
 
 /**

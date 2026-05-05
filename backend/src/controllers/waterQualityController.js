@@ -4,7 +4,7 @@
  */
 
 const waterQualityService = require('../services/waterQualityService');
-const { asyncHandler } = require('../middleware/errorHandler');
+const { asyncHandler, APIError } = require('../middleware/errorHandler');
 const { HTTP_STATUS } = require('../constants');
 const { lastValue } = require('../utils/queryHelpers');
 
@@ -68,9 +68,10 @@ const getById = asyncHandler(async (req, res) => {
   const data = await waterQualityService.getReadingById(req.params.id);
 
   if (!data) {
-    return res
-      .status(HTTP_STATUS.NOT_FOUND)
-      .json({ success: false, error: 'Water quality reading not found' });
+    throw new APIError(
+      'Water quality reading not found',
+      HTTP_STATUS.NOT_FOUND
+    );
   }
 
   res.json({ success: true, data });

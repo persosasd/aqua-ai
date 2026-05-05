@@ -7,118 +7,23 @@ const { supabase, isSupabaseConfigured } = require('../db/supabase');
 const { db } = require('../db/connection');
 const { APIError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
-const { ALERT_STATUS } = require('../constants');
-const { buildPagination } = require('../utils/pagination');
+const { ALERT_STATUS, PAGINATION_DEFAULTS } = require('../constants');
 
-const ALERT_FILTER_RULES = [
-  {
-    key: 'status',
-    db: (q, v) => q.where('a.status', v),
-    sb: (q, v) => q.eq('status', v),
-  },
-  {
-    key: 'severity',
-    db: (q, v) => q.where('a.severity', v),
-    sb: (q, v) => q.eq('severity', v),
-  },
-  {
-    key: 'location_id',
-    db: (q, v) => q.where('a.location_id', v),
-    sb: (q, v) => q.eq('location_id', v),
-  },
-  {
-    key: 'parameter',
-    db: (q, v) => q.where('wqp.parameter_code', String(v).toUpperCase()),
-    sb: (q, v) =>
-      q.eq('water_quality_parameters.parameter_code', String(v).toUpperCase()),
-  },
-  {
-    key: 'alert_type',
-    db: (q, v) => q.where('a.alert_type', v),
-    sb: (q, v) => q.eq('alert_type', v),
-  },
-  {
-    key: 'start_date',
-    db: (q, v) => q.where('a.triggered_at', '>=', v),
-    sb: (q, v) => q.gte('triggered_at', v),
-  },
-  {
-    key: 'end_date',
-    db: (q, v) => q.where('a.triggered_at', '<=', v),
-    sb: (q, v) => q.lte('triggered_at', v),
-  },
-];
-
-const applyAlertFilters = (query, filters, isSupabase) =>
-  ALERT_FILTER_RULES.reduce(
-    (q, rule) =>
-      filters[rule.key]
-        ? rule[isSupabase ? 'sb' : 'db'](q, filters[rule.key])
-        : q,
-    query
-  );
-
-const mapAlertRows = (data) =>
-  (data || []).map((row) => ({
-    id: row.id,
-    location_id: row.location_id,
-    location_name: row.locations?.name ?? row.location_name,
-    state: row.locations?.state ?? row.state,
-    parameter: row.water_quality_parameters?.parameter_name ?? row.parameter,
-    alert_type: row.alert_type,
-    severity: row.severity,
-    message: row.message,
-    threshold_value: row.threshold_value,
-    actual_value: row.actual_value,
-    status: row.status,
-    triggered_at: row.triggered_at,
-    resolved_at: row.resolved_at,
-    notification_sent: row.notification_sent,
-    created_at: row.created_at,
-  }));
-
-const getAlertsFromDb = async (filters) => {
-  const { limit = 100, offset = 0 } = filters;
-  const baseQuery = applyAlertFilters(
-    db('alerts as a')
-      .join('locations as l', 'a.location_id', 'l.id')
-      .join('water_quality_parameters as wqp', 'a.parameter_id', 'wqp.id'),
-    filters,
-    false
-  );
-
-  const totalResult = await baseQuery.clone().count('a.id as total').first();
-  const total = parseInt(totalResult?.total || 0, 10);
-
-  const rows = await baseQuery
-    .clone()
-    .select(
-      'a.id as id',
-      'a.location_id as location_id',
-      'a.alert_type as alert_type',
-      'a.severity as severity',
-      'a.message as message',
-      'a.threshold_value as threshold_value',
-      'a.actual_value as actual_value',
-      'a.status as status',
-      'a.triggered_at as triggered_at',
-      'a.resolved_at as resolved_at',
-      'a.notification_sent as notification_sent',
-      'a.created_at as created_at',
-      'l.name as location_name',
-      'l.state as state',
-      'wqp.parameter_name as parameter',
-      'wqp.parameter_code as parameter_code'
-    )
-    .orderBy('a.triggered_at', 'desc')
-    .limit(limit)
-    .offset(offset);
-
-  return {
-    data: rows || [],
-    pagination: buildPagination(total, limit, offset),
-  };
-};
+/**
+ * Get paginated alerts with optional filters.
+ */
+async function getAlerts(filters = {}) {
+  const {
+    status,
+    severity,
+    location_id,
+    parameter,
+    alert_type,
+    start_date,
+    end_date,
+    limit = PAGINATION_DEFAULTS.LIMIT,
+    offset = PAGINATION_DEFAULTS.OFFSET,
+  } = filters;
 
 const getAlertsFromSupabase = async (filters) => {
   const { limit = 100, offset = 0 } = filters;

@@ -34,7 +34,7 @@
     "express-validator": "^7.0.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "knex": "^3.0.1",
+    "knex": "^3.2.10",
     "morgan": "^1.10.0",
     "node-cron": "^4.2.1",
     "pg": "^8.20.0",

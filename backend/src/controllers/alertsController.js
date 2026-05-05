@@ -4,7 +4,7 @@
  */
 
 const alertsService = require('../services/alertsService');
-const { asyncHandler } = require('../middleware/errorHandler');
+const { asyncHandler, APIError } = require('../middleware/errorHandler');
 const { HTTP_STATUS } = require('../constants');
 const { lastValue } = require('../utils/queryHelpers');
 
@@ -46,9 +46,7 @@ const getById = asyncHandler(async (req, res) => {
   const alert = await alertsService.getAlertById(req.params.id);
 
   if (!alert) {
-    return res
-      .status(HTTP_STATUS.NOT_FOUND)
-      .json({ success: false, error: 'Alert not found' });
+    throw new APIError('Alert not found', HTTP_STATUS.NOT_FOUND);
   }
 
   res.json({ success: true, data: alert });

@@ -6,6 +6,7 @@
 const { supabase } = require('../db/supabase');
 const { db } = require('../db/connection');
 const { PAGINATION_DEFAULTS } = require('../constants');
+const { sanitizeLikeSearch } = require('../utils/security');
 
 /**
  * Get paginated water quality readings with optional filters.
@@ -38,7 +39,7 @@ async function getReadings(filters = {}) {
     if (Number.isFinite(parsedId)) {
       query = query.eq('location_id', parsedId);
     } else {
-      query = query.ilike('locations.name', `%${location_id}%`);
+      query = query.ilike('locations.name', `%${sanitizeLikeSearch(location_id)}%`);
     }
   }
 
@@ -50,7 +51,7 @@ async function getReadings(filters = {}) {
   }
 
   if (state) {
-    query = query.ilike('locations.state', `%${state}%`);
+    query = query.ilike('locations.state', `%${sanitizeLikeSearch(state)}%`);
   }
 
   if (risk_level) {

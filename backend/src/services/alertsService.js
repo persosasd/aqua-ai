@@ -7,7 +7,7 @@ const { supabase } = require('../db/supabase');
 const { db } = require('../db/connection');
 const { APIError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
-const { ALERT_STATUS } = require('../constants');
+const { ALERT_STATUS, PAGINATION_DEFAULTS } = require('../constants');
 
 /**
  * Get paginated alerts with optional filters.
@@ -21,8 +21,8 @@ async function getAlerts(filters = {}) {
     alert_type,
     start_date,
     end_date,
-    limit = 100,
-    offset = 0,
+    limit = PAGINATION_DEFAULTS.LIMIT,
+    offset = PAGINATION_DEFAULTS.OFFSET,
   } = filters;
 
   let query = supabase.from('alerts').select(
@@ -101,7 +101,7 @@ async function getAlerts(filters = {}) {
  * Get active alerts.
  */
 async function getActiveAlerts(filters = {}) {
-  const { severity, limit = 50 } = filters;
+  const { severity, limit = PAGINATION_DEFAULTS.SMALL_LIMIT } = filters;
 
   let query = supabase.from('active_alerts').select('*');
 

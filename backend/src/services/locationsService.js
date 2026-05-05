@@ -15,31 +15,27 @@ const buildPagination = (total, limit, offset) => ({
   hasMore: offset + limit < total,
 });
 
-const applyLocationFiltersToDbQuery = (query, filters) => {
-  const { state, risk_level } = filters;
+const LOCATION_FILTER_RULES = [
+  {
+    key: 'state',
+    db: (q, v) => q.where('state', 'ilike', `%${v}%`),
+    sb: (q, v) => q.ilike('state', `%${v}%`),
+  },
+  {
+    key: 'risk_level',
+    db: (q, v) => q.where('risk_level', v),
+    sb: (q, v) => q.eq('risk_level', v),
+  },
+];
 
-  if (state) {
-    query.where('state', 'ilike', `%${state}%`);
-  }
-  if (risk_level) {
-    query.where('risk_level', risk_level);
-  }
-
-  return query;
-};
-
-const applyLocationFiltersToSupabaseQuery = (query, filters) => {
-  const { state, risk_level } = filters;
-
-  if (state) {
-    query = query.ilike('state', `%${state}%`);
-  }
-  if (risk_level) {
-    query = query.eq('risk_level', risk_level);
-  }
-
-  return query;
-};
+const applyLocationFilters = (query, filters, isSupabase) =>
+  LOCATION_FILTER_RULES.reduce(
+    (q, rule) =>
+      filters[rule.key]
+        ? rule[isSupabase ? 'sb' : 'db'](q, filters[rule.key])
+        : q,
+    query
+  );
 
 const buildGeoJSON = (data) => {
   const features = (data || [])
@@ -101,10 +97,7 @@ const computeRiskSummary = (data) => {
 const getLocationsFromDb = async (filters) => {
   const { limit = PAGINATION_DEFAULTS.LIMIT, offset = PAGINATION_DEFAULTS.OFFSET } =
     filters;
-  const baseQuery = applyLocationFiltersToDbQuery(
-    db('location_summary'),
-    filters
-  );
+  const baseQuery = applyLocationFilters(db('location_summary'), filters, false);
   const totalResult = await baseQuery.clone().count('* as total').first();
   const total = parseInt(totalResult?.total || 0, 10);
 
@@ -125,7 +118,7 @@ const getLocationsFromSupabase = async (filters) => {
     filters;
   let query = supabase.from('location_summary').select('*', { count: 'exact' });
 
-  query = applyLocationFiltersToSupabaseQuery(query, filters);
+  query = applyLocationFilters(query, filters, true);
 
   const { data, count, error } = await query
     .order('name')

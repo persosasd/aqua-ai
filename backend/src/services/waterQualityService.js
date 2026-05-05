@@ -14,79 +14,61 @@ const buildPagination = (total, limit, offset) => ({
   hasMore: offset + limit < total,
 });
 
-const applyReadingsFiltersToDbQuery = (query, filters) => {
-  const { location_id, parameter, state, risk_level, start_date, end_date } =
-    filters;
-
-  if (location_id) {
-    const parsedId = Number(location_id);
-    if (Number.isFinite(parsedId)) {
-      query.where('wqr.location_id', parsedId);
-    } else {
-      query.where('l.name', 'ilike', `%${location_id}%`);
-    }
+const applyLocationIdFilter = (query, locationId, isSupabase) => {
+  const parsed = Number(locationId);
+  if (isSupabase) {
+    return Number.isFinite(parsed)
+      ? query.eq('location_id', parsed)
+      : query.ilike('locations.name', `%${locationId}%`);
   }
-
-  if (parameter) {
-    query.where('wqp.parameter_code', String(parameter).toUpperCase());
+  if (Number.isFinite(parsed)) {
+    query.where('wqr.location_id', parsed);
+  } else {
+    query.where('l.name', 'ilike', `%${locationId}%`);
   }
-
-  if (state) {
-    query.where('l.state', 'ilike', `%${state}%`);
-  }
-
-  if (risk_level) {
-    query.where('wqr.risk_level', risk_level);
-  }
-
-  if (start_date) {
-    query.where('wqr.measurement_date', '>=', start_date);
-  }
-
-  if (end_date) {
-    query.where('wqr.measurement_date', '<=', end_date);
-  }
-
   return query;
 };
 
-const applyReadingsFiltersToSupabaseQuery = (query, filters) => {
-  const { location_id, parameter, state, risk_level, start_date, end_date } =
-    filters;
+const READINGS_FILTER_RULES = [
+  {
+    key: 'parameter',
+    db: (q, v) => q.where('wqp.parameter_code', String(v).toUpperCase()),
+    sb: (q, v) =>
+      q.eq('water_quality_parameters.parameter_code', String(v).toUpperCase()),
+  },
+  {
+    key: 'state',
+    db: (q, v) => q.where('l.state', 'ilike', `%${v}%`),
+    sb: (q, v) => q.ilike('locations.state', `%${v}%`),
+  },
+  {
+    key: 'risk_level',
+    db: (q, v) => q.where('wqr.risk_level', v),
+    sb: (q, v) => q.eq('risk_level', v),
+  },
+  {
+    key: 'start_date',
+    db: (q, v) => q.where('wqr.measurement_date', '>=', v),
+    sb: (q, v) => q.gte('measurement_date', v),
+  },
+  {
+    key: 'end_date',
+    db: (q, v) => q.where('wqr.measurement_date', '<=', v),
+    sb: (q, v) => q.lte('measurement_date', v),
+  },
+];
 
-  if (location_id) {
-    const parsedId = Number(location_id);
-    if (Number.isFinite(parsedId)) {
-      query = query.eq('location_id', parsedId);
-    } else {
-      query = query.ilike('locations.name', `%${location_id}%`);
-    }
-  }
-
-  if (parameter) {
-    query = query.eq(
-      'water_quality_parameters.parameter_code',
-      String(parameter).toUpperCase()
-    );
-  }
-
-  if (state) {
-    query = query.ilike('locations.state', `%${state}%`);
-  }
-
-  if (risk_level) {
-    query = query.eq('risk_level', risk_level);
-  }
-
-  if (start_date) {
-    query = query.gte('measurement_date', start_date);
-  }
-
-  if (end_date) {
-    query = query.lte('measurement_date', end_date);
-  }
-
-  return query;
+const applyReadingsFilters = (query, filters, isSupabase) => {
+  const withLocation = filters.location_id
+    ? applyLocationIdFilter(query, filters.location_id, isSupabase)
+    : query;
+  return READINGS_FILTER_RULES.reduce(
+    (q, rule) =>
+      filters[rule.key]
+        ? rule[isSupabase ? 'sb' : 'db'](q, filters[rule.key])
+        : q,
+    withLocation
+  );
 };
 
 const mapReadingsFromSupabase = (data) =>
@@ -111,11 +93,12 @@ const mapReadingsFromSupabase = (data) =>
 const getReadingsFromDb = async (filters) => {
   const { limit = PAGINATION_DEFAULTS.LIMIT, offset = PAGINATION_DEFAULTS.OFFSET } =
     filters;
-  const baseQuery = applyReadingsFiltersToDbQuery(
+  const baseQuery = applyReadingsFilters(
     db('water_quality_readings as wqr')
       .join('locations as l', 'wqr.location_id', 'l.id')
       .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id'),
-    filters
+    filters,
+    false
   );
 
   const totalResult = await baseQuery.clone().count('* as total').first();
@@ -162,7 +145,7 @@ const getReadingsFromSupabase = async (filters) => {
     { count: 'exact' }
   );
 
-  query = applyReadingsFiltersToSupabaseQuery(query, filters);
+  query = applyReadingsFilters(query, filters, true);
 
   const { data, error, count } = await query
     .order('measurement_date', { ascending: false })

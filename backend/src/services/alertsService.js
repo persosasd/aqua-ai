@@ -16,80 +16,53 @@ const buildPagination = (total, limit, offset) => ({
   hasMore: offset + limit < total,
 });
 
-const applyAlertFiltersToDbQuery = (query, filters) => {
-  const {
-    status,
-    severity,
-    location_id,
-    parameter,
-    alert_type,
-    start_date,
-    end_date,
-  } = filters;
+const ALERT_FILTER_RULES = [
+  {
+    key: 'status',
+    db: (q, v) => q.where('a.status', v),
+    sb: (q, v) => q.eq('status', v),
+  },
+  {
+    key: 'severity',
+    db: (q, v) => q.where('a.severity', v),
+    sb: (q, v) => q.eq('severity', v),
+  },
+  {
+    key: 'location_id',
+    db: (q, v) => q.where('a.location_id', v),
+    sb: (q, v) => q.eq('location_id', v),
+  },
+  {
+    key: 'parameter',
+    db: (q, v) => q.where('wqp.parameter_code', String(v).toUpperCase()),
+    sb: (q, v) =>
+      q.eq('water_quality_parameters.parameter_code', String(v).toUpperCase()),
+  },
+  {
+    key: 'alert_type',
+    db: (q, v) => q.where('a.alert_type', v),
+    sb: (q, v) => q.eq('alert_type', v),
+  },
+  {
+    key: 'start_date',
+    db: (q, v) => q.where('a.triggered_at', '>=', v),
+    sb: (q, v) => q.gte('triggered_at', v),
+  },
+  {
+    key: 'end_date',
+    db: (q, v) => q.where('a.triggered_at', '<=', v),
+    sb: (q, v) => q.lte('triggered_at', v),
+  },
+];
 
-  if (status) {
-    query.where('a.status', status);
-  }
-  if (severity) {
-    query.where('a.severity', severity);
-  }
-  if (location_id) {
-    query.where('a.location_id', location_id);
-  }
-  if (parameter) {
-    query.where('wqp.parameter_code', String(parameter).toUpperCase());
-  }
-  if (alert_type) {
-    query.where('a.alert_type', alert_type);
-  }
-  if (start_date) {
-    query.where('a.triggered_at', '>=', start_date);
-  }
-  if (end_date) {
-    query.where('a.triggered_at', '<=', end_date);
-  }
-
-  return query;
-};
-
-const applyAlertFiltersToSupabaseQuery = (query, filters) => {
-  const {
-    status,
-    severity,
-    location_id,
-    parameter,
-    alert_type,
-    start_date,
-    end_date,
-  } = filters;
-
-  if (status) {
-    query = query.eq('status', status);
-  }
-  if (severity) {
-    query = query.eq('severity', severity);
-  }
-  if (location_id) {
-    query = query.eq('location_id', location_id);
-  }
-  if (parameter) {
-    query = query.eq(
-      'water_quality_parameters.parameter_code',
-      String(parameter).toUpperCase()
-    );
-  }
-  if (alert_type) {
-    query = query.eq('alert_type', alert_type);
-  }
-  if (start_date) {
-    query = query.gte('triggered_at', start_date);
-  }
-  if (end_date) {
-    query = query.lte('triggered_at', end_date);
-  }
-
-  return query;
-};
+const applyAlertFilters = (query, filters, isSupabase) =>
+  ALERT_FILTER_RULES.reduce(
+    (q, rule) =>
+      filters[rule.key]
+        ? rule[isSupabase ? 'sb' : 'db'](q, filters[rule.key])
+        : q,
+    query
+  );
 
 const mapAlertRows = (data) =>
   (data || []).map((row) => ({
@@ -112,11 +85,12 @@ const mapAlertRows = (data) =>
 
 const getAlertsFromDb = async (filters) => {
   const { limit = 100, offset = 0 } = filters;
-  const baseQuery = applyAlertFiltersToDbQuery(
+  const baseQuery = applyAlertFilters(
     db('alerts as a')
       .join('locations as l', 'a.location_id', 'l.id')
       .join('water_quality_parameters as wqp', 'a.parameter_id', 'wqp.id'),
-    filters
+    filters,
+    false
   );
 
   const totalResult = await baseQuery.clone().count('a.id as total').first();
@@ -164,7 +138,7 @@ const getAlertsFromSupabase = async (filters) => {
     { count: 'exact' }
   );
 
-  query = applyAlertFiltersToSupabaseQuery(query, filters);
+  query = applyAlertFilters(query, filters, true);
 
   const { data, count, error } = await query
     .order('triggered_at', { ascending: false })
@@ -268,43 +242,24 @@ const finalizeAlertUpdate = ({
   throw new APIError(invalidMessage, 400);
 };
 
-const resolveAlertInDb = async (id, resolutionNotes, userId) => {
-  const updatePayload = {
-    status: ALERT_STATUS.RESOLVED,
-    resolved_at: new Date().toISOString(),
-    resolution_notes: resolutionNotes || null,
-  };
+const performAlertStateUpdate = async (
+  id,
+  payload,
+  dbConditionFn,
+  sbConditionFn,
+  opts
+) => {
+  if (!isSupabaseConfigured) {
+    const updatedCount = await dbConditionFn(db('alerts').where('id', id)).update(payload);
+    const updated =
+      updatedCount > 0 ? await db('alerts').where('id', id).first() : null;
+    const existing = updated ? null : await fetchAlertStatusFromDb(id);
+    return finalizeAlertUpdate({ updated, existing, id, ...opts });
+  }
 
-  const updatedCount = await db('alerts')
-    .where('id', id)
-    .whereNot('status', ALERT_STATUS.RESOLVED)
-    .update(updatePayload);
-
-  const updated =
-    updatedCount > 0 ? await db('alerts').where('id', id).first() : null;
-  const existing = updated ? null : await fetchAlertStatusFromDb(id);
-
-  return finalizeAlertUpdate({
-    updated,
-    existing,
-    id,
-    logMessage: 'Alert resolved',
-    userId,
-    notFoundMessage: 'Alert not found',
-    invalidMessage: 'Alert is already resolved',
-  });
-};
-
-const resolveAlertInSupabase = async (id, resolutionNotes, userId) => {
-  const { data: updated, error } = await supabase
-    .from('alerts')
-    .update({
-      status: ALERT_STATUS.RESOLVED,
-      resolved_at: new Date().toISOString(),
-      resolution_notes: resolutionNotes || null,
-    })
-    .eq('id', id)
-    .neq('status', ALERT_STATUS.RESOLVED)
+  const { data: updated, error } = await sbConditionFn(
+    supabase.from('alerts').update(payload).eq('id', id)
+  )
     .select()
     .maybeSingle();
 
@@ -313,70 +268,7 @@ const resolveAlertInSupabase = async (id, resolutionNotes, userId) => {
   }
 
   const existing = updated ? null : await fetchAlertStatusFromSupabase(id);
-  return finalizeAlertUpdate({
-    updated,
-    existing,
-    id,
-    logMessage: 'Alert resolved',
-    userId,
-    notFoundMessage: 'Alert not found',
-    invalidMessage: 'Alert is already resolved',
-  });
-};
-
-const dismissAlertInDb = async (id, dismissalReason, userId) => {
-  const updatePayload = {
-    status: ALERT_STATUS.DISMISSED,
-    dismissal_reason: dismissalReason || null,
-  };
-
-  const updatedCount = await db('alerts')
-    .where('id', id)
-    .where('status', ALERT_STATUS.ACTIVE)
-    .update(updatePayload);
-
-  const updated =
-    updatedCount > 0 ? await db('alerts').where('id', id).first() : null;
-  const existing = updated ? null : await fetchAlertStatusFromDb(id);
-
-  return finalizeAlertUpdate({
-    updated,
-    existing,
-    id,
-    logMessage: 'Alert dismissed',
-    userId,
-    notFoundMessage: 'Alert not found',
-    invalidMessage: 'Only active alerts can be dismissed',
-  });
-};
-
-const dismissAlertInSupabase = async (id, dismissalReason, userId) => {
-  const { data: updated, error } = await supabase
-    .from('alerts')
-    .update({
-      status: ALERT_STATUS.DISMISSED,
-      dismissal_reason: dismissalReason || null,
-    })
-    .eq('id', id)
-    .eq('status', ALERT_STATUS.ACTIVE)
-    .select()
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const existing = updated ? null : await fetchAlertStatusFromSupabase(id);
-
-  return finalizeAlertUpdate({
-    updated,
-    existing,
-    id,
-    logMessage: 'Alert dismissed',
-    userId,
-    notFoundMessage: 'Alert not found',
-    invalidMessage: 'Only active alerts can be dismissed',
-  });
+  return finalizeAlertUpdate({ updated, existing, id, ...opts });
 };
 
 /**
@@ -423,6 +315,20 @@ async function getActiveAlerts(filters = {}) {
 
   return data || [];
 }
+
+const aggregateCounts = (rows, keyField, seed) => {
+  for (const row of rows) {
+    if (row[keyField] && seed[row[keyField]] !== undefined) {
+      seed[row[keyField]] = parseInt(row.count, 10);
+    }
+  }
+  return seed;
+};
+
+const computeAvgResolutionHours = (result) => {
+  if (result?.avg_time == null) return null;
+  return (parseFloat(result.avg_time) / 3600).toFixed(2);
+};
 
 /**
  * Get alert statistics with server-side aggregations.
@@ -490,39 +396,25 @@ async function getAlertStats(filters = {}) {
       .first(),
   ]);
 
-  const totalAlerts = parseInt(totalResult?.total || 0, 10);
-
-  const statusCounts = { active: 0, resolved: 0, dismissed: 0 };
-  for (const row of statusResult) {
-    if (statusCounts[row.status] !== undefined) {
-      statusCounts[row.status] = parseInt(row.count, 10);
-    }
-  }
-
-  const severityCounts = { low: 0, medium: 0, high: 0, critical: 0 };
-  for (const row of severityResult) {
-    if (severityCounts[row.severity] !== undefined) {
-      severityCounts[row.severity] = parseInt(row.count, 10);
-    }
-  }
+  const statusCounts = aggregateCounts(statusResult, 'status', {
+    active: 0,
+    resolved: 0,
+    dismissed: 0,
+  });
+  const severityCounts = aggregateCounts(severityResult, 'severity', {
+    low: 0,
+    medium: 0,
+    high: 0,
+    critical: 0,
+  });
 
   const alertTypeCounts = {};
   for (const row of alertTypeResult) {
     alertTypeCounts[row.alert_type] = parseInt(row.count, 10);
   }
 
-  let avgResolutionTime = null;
-  if (
-    avgResolutionResult?.avg_time !== null &&
-    avgResolutionResult?.avg_time !== undefined
-  ) {
-    avgResolutionTime = (
-      parseFloat(avgResolutionResult.avg_time) / 3600
-    ).toFixed(2);
-  }
-
   return {
-    total_alerts: totalAlerts,
+    total_alerts: parseInt(totalResult?.total || 0, 10),
     active_alerts: statusCounts.active,
     resolved_alerts: statusCounts.resolved,
     dismissed_alerts: statusCounts.dismissed,
@@ -530,7 +422,7 @@ async function getAlertStats(filters = {}) {
     alert_types: alertTypeCounts,
     parameters_with_alerts: parametersResult.map((row) => row.parameter_code),
     locations_with_alerts: parseInt(locationsResult?.count || 0, 10),
-    average_resolution_time_hours: avgResolutionTime,
+    average_resolution_time_hours: computeAvgResolutionHours(avgResolutionResult),
   };
 }
 
@@ -551,11 +443,22 @@ async function getAlertById(id) {
  * Uses atomic WHERE clause to prevent race conditions (no read-then-write).
  */
 async function resolveAlert(id, resolutionNotes, userId) {
-  if (!isSupabaseConfigured) {
-    return resolveAlertInDb(id, resolutionNotes, userId);
-  }
-
-  return resolveAlertInSupabase(id, resolutionNotes, userId);
+  return performAlertStateUpdate(
+    id,
+    {
+      status: ALERT_STATUS.RESOLVED,
+      resolved_at: new Date().toISOString(),
+      resolution_notes: resolutionNotes || null,
+    },
+    (q) => q.whereNot('status', ALERT_STATUS.RESOLVED),
+    (q) => q.neq('status', ALERT_STATUS.RESOLVED),
+    {
+      logMessage: 'Alert resolved',
+      userId,
+      notFoundMessage: 'Alert not found',
+      invalidMessage: 'Alert is already resolved',
+    }
+  );
 }
 
 /**
@@ -563,11 +466,21 @@ async function resolveAlert(id, resolutionNotes, userId) {
  * Uses atomic WHERE clause to prevent race conditions (no read-then-write).
  */
 async function dismissAlert(id, dismissalReason, userId) {
-  if (!isSupabaseConfigured) {
-    return dismissAlertInDb(id, dismissalReason, userId);
-  }
-
-  return dismissAlertInSupabase(id, dismissalReason, userId);
+  return performAlertStateUpdate(
+    id,
+    {
+      status: ALERT_STATUS.DISMISSED,
+      dismissal_reason: dismissalReason || null,
+    },
+    (q) => q.where('status', ALERT_STATUS.ACTIVE),
+    (q) => q.eq('status', ALERT_STATUS.ACTIVE),
+    {
+      logMessage: 'Alert dismissed',
+      userId,
+      notFoundMessage: 'Alert not found',
+      invalidMessage: 'Only active alerts can be dismissed',
+    }
+  );
 }
 
 module.exports = {

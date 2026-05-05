@@ -62,17 +62,19 @@ class User {
    * Update user
    */
   static async update(id, updates) {
+    const updateData = { ...updates };
+
     // If password is being updated, hash it
-    if (updates.password) {
+    if (updateData.password) {
       const salt = await bcrypt.genSalt(10);
-      updates.password = await bcrypt.hash(updates.password, salt);
+      updateData.password = await bcrypt.hash(updateData.password, salt);
     }
 
-    updates.updated_at = new Date();
+    updateData.updated_at = new Date();
 
     const [user] = await db('users')
       .where({ id })
-      .update(updates)
+      .update(updateData)
       .returning(['id', 'email', 'name', 'role', 'updated_at']);
 
     return user;
@@ -99,7 +101,7 @@ class User {
 
     return {
       users,
-      total: parseInt(count),
+      total: parseInt(count || '0', 10),
       limit,
       offset,
     };

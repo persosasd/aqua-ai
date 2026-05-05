@@ -7,18 +7,13 @@ const { supabase, isSupabaseConfigured } = require('../db/supabase');
 const { db } = require('../db/connection');
 const { PAGINATION_DEFAULTS } = require('../constants');
 const logger = require('../utils/logger');
-
-const buildPagination = (total, limit, offset) => ({
-  total,
-  limit,
-  offset,
-  hasMore: offset + limit < total,
-});
+const { sanitizeLikeSearch } = require('../utils/security');
+const { buildPagination } = require('../utils/pagination');
 
 const LOCATION_FILTER_RULES = [
   {
     key: 'state',
-    db: (q, v) => q.where('state', 'ilike', `%${v}%`),
+    db: (q, v) => q.where('state', 'ilike', `%${sanitizeLikeSearch(v)}%`),
     sb: (q, v) => q.ilike('state', `%${v}%`),
   },
   {
@@ -359,10 +354,12 @@ async function getRiskSummary() {
  * Search locations by query string.
  */
 async function searchLocations(q, limit = PAGINATION_DEFAULTS.SEARCH_LIMIT) {
+  const sanitized = q ? sanitizeLikeSearch(q) : null;
+
   if (!isSupabaseConfigured) {
     const query = db('location_summary').select('*');
-    if (q) {
-      query.where('name', 'ilike', `%${q}%`);
+    if (sanitized) {
+      query.where('name', 'ilike', `%${sanitized}%`);
     }
     const data = await query.orderBy('name').limit(limit);
     return data || [];
@@ -370,8 +367,8 @@ async function searchLocations(q, limit = PAGINATION_DEFAULTS.SEARCH_LIMIT) {
 
   let query = supabase.from('location_summary').select('*');
 
-  if (q) {
-    query = query.ilike('name', `%${q}%`);
+  if (sanitized) {
+    query = query.ilike('name', `%${sanitized}%`);
   }
 
   const { data, error } = await query.order('name').limit(limit);

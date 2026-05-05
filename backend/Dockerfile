@@ -1,18 +1,24 @@
 # Backend Dockerfile for Aqua-AI
 FROM node:20-alpine
 
+# Create a non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Set working directory
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY --chown=appuser:appgroup package*.json ./
 
 # Install only production dependencies (skip SQLite for Docker)
 RUN npm ci --omit=dev --ignore-scripts && \
   npm cache clean --force
 
 # Copy source code
-COPY . .
+COPY --chown=appuser:appgroup . .
+
+# Switch to non-root user
+USER appuser
 
 # Expose port
 EXPOSE 5000

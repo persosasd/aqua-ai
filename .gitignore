@@ -142,7 +142,6 @@ jspm_packages/
 
 # Docker
 *.pid
-.dockerignore
 
 # Battery reports (Windows specific)
 battery-report.html

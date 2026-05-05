@@ -8,13 +8,7 @@ const { db } = require('../db/connection');
 const { APIError } = require('../middleware/errorHandler');
 const logger = require('../utils/logger');
 const { ALERT_STATUS } = require('../constants');
-
-const buildPagination = (total, limit, offset) => ({
-  total,
-  limit,
-  offset,
-  hasMore: offset + limit < total,
-});
+const { buildPagination } = require('../utils/pagination');
 
 const ALERT_FILTER_RULES = [
   {

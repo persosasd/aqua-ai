@@ -26,6 +26,7 @@ const errorHandler = (err, req, res, _next) => {
 
   // Only show debug info if EXPLICITLY in development mode
   const isDev = process.env.NODE_ENV === 'development';
+  const isClientError = statusCode >= 400 && statusCode < 500;
 
   // Log the full error server-side always
   logger.error('Error occurred:', {
@@ -41,7 +42,10 @@ const errorHandler = (err, req, res, _next) => {
 
   const response = {
     success: false,
-    error: isDev ? err.message : 'Internal Server Error',
+    error:
+      isDev || isClientError
+        ? err.message || 'Request failed'
+        : 'Internal Server Error',
     requestId: req.requestId, // So users can reference in bug reports
     ...(isDev && {
       stack: err.stack,
@@ -49,8 +53,8 @@ const errorHandler = (err, req, res, _next) => {
     }),
   };
 
-  // Never leak error messages for 500s in production
-  if (!isDev && statusCode === 500) {
+  // Never leak server error messages in production
+  if (!isDev && statusCode >= 500) {
     response.error = 'Internal Server Error';
   }
 

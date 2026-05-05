@@ -7,13 +7,7 @@ const { supabase, isSupabaseConfigured } = require('../db/supabase');
 const { db } = require('../db/connection');
 const { PAGINATION_DEFAULTS } = require('../constants');
 const { sanitizeLikeSearch } = require('../utils/security');
-
-const buildPagination = (total, limit, offset) => ({
-  total,
-  limit,
-  offset,
-  hasMore: offset + limit < total,
-});
+const { buildPagination } = require('../utils/pagination');
 
 const applyLocationIdFilter = (query, locationId, isSupabase) => {
   const parsed = Number(locationId);

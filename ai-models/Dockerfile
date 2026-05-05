@@ -26,6 +26,11 @@ COPY data-pipeline/ /app/data-pipeline/
 # Create directories for models and data
 RUN mkdir -p /app/models /app/data
 
+# Create a non-root user and switch to it
+RUN groupadd -r appgroup && useradd -r -g appgroup appuser && \
+    chown -R appuser:appgroup /app
+USER appuser
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app

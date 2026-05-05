@@ -87,8 +87,12 @@ const buildReadingsStatsBaseQuery = (state, parameter) => {
   const q = db('water_quality_readings as wqr')
     .join('locations as l', 'wqr.location_id', 'l.id')
     .join('water_quality_parameters as wqp', 'wqr.parameter_id', 'wqp.id');
-  if (state) q.where('l.state', 'ilike', `%${sanitizeLikeSearch(state)}%`);
-  if (parameter) q.where('wqp.parameter_code', '=', String(parameter).toUpperCase());
+  if (state) {
+    q.where('l.state', 'ilike', `%${sanitizeLikeSearch(state)}%`);
+  }
+  if (parameter) {
+    q.where('wqp.parameter_code', '=', String(parameter).toUpperCase());
+  }
   return q;
 };
 
@@ -103,8 +107,11 @@ const computeRiskLevelCounts = (rows) => {
 };
 
 const computeAvgQualityScore = (result) => {
-  if (result?.avg_score == null) return null;
-  return Number(result.avg_score).toFixed(2);
+  const avgScore = result?.avg_score;
+  if (avgScore === null || avgScore === undefined) {
+    return null;
+  }
+  return Number(avgScore).toFixed(2);
 };
 const mapReadingsFromSupabase = (data) =>
   (data || []).map((row) => ({
@@ -126,8 +133,10 @@ const mapReadingsFromSupabase = (data) =>
   }));
 
 const getReadingsFromDb = async (filters) => {
-  const { limit = PAGINATION_DEFAULTS.LIMIT, offset = PAGINATION_DEFAULTS.OFFSET } =
-    filters;
+  const {
+    limit = PAGINATION_DEFAULTS.LIMIT,
+    offset = PAGINATION_DEFAULTS.OFFSET,
+  } = filters;
   const baseQuery = applyReadingsFilters(
     db('water_quality_readings as wqr')
       .join('locations as l', 'wqr.location_id', 'l.id')
@@ -169,8 +178,10 @@ const getReadingsFromDb = async (filters) => {
 };
 
 const getReadingsFromSupabase = async (filters) => {
-  const { limit = PAGINATION_DEFAULTS.LIMIT, offset = PAGINATION_DEFAULTS.OFFSET } =
-    filters;
+  const {
+    limit = PAGINATION_DEFAULTS.LIMIT,
+    offset = PAGINATION_DEFAULTS.OFFSET,
+  } = filters;
   let query = supabase.from('water_quality_readings').select(
     `
       id, value, measurement_date, source, risk_level, quality_score,

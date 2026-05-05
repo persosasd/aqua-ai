@@ -244,16 +244,17 @@ const finalizeAlertUpdate = ({
 
 const performAlertStateUpdate = async (id, payload, conditions, opts) => {
   if (!isSupabaseConfigured) {
-    const updatedCount = await conditions.db(db('alerts').where('id', id)).update(payload);
+    const updatedCount = await conditions
+      .db(db('alerts').where('id', id))
+      .update(payload);
     const updated =
       updatedCount > 0 ? await db('alerts').where('id', id).first() : null;
     const existing = updated ? null : await fetchAlertStatusFromDb(id);
     return finalizeAlertUpdate({ updated, existing, id, ...opts });
   }
 
-  const { data: updated, error } = await conditions.sb(
-    supabase.from('alerts').update(payload).eq('id', id)
-  )
+  const { data: updated, error } = await conditions
+    .sb(supabase.from('alerts').update(payload).eq('id', id))
     .select()
     .maybeSingle();
 
@@ -320,8 +321,11 @@ const aggregateCounts = (rows, keyField, seed) => {
 };
 
 const computeAvgResolutionHours = (result) => {
-  if (result?.avg_time == null) return null;
-  return (parseFloat(result.avg_time) / 3600).toFixed(2);
+  const avgTime = result?.avg_time;
+  if (avgTime === null || avgTime === undefined) {
+    return null;
+  }
+  return (parseFloat(avgTime) / 3600).toFixed(2);
 };
 
 const buildAlertStatsBaseQuery = (start_date, end_date) => {
@@ -330,8 +334,12 @@ const buildAlertStatsBaseQuery = (start_date, end_date) => {
     'a.parameter_id',
     'wqp.id'
   );
-  if (start_date) q.where('a.triggered_at', '>=', start_date);
-  if (end_date) q.where('a.triggered_at', '<=', end_date);
+  if (start_date) {
+    q.where('a.triggered_at', '>=', start_date);
+  }
+  if (end_date) {
+    q.where('a.triggered_at', '<=', end_date);
+  }
   return q;
 };
 
@@ -418,7 +426,8 @@ async function getAlertStats(filters = {}) {
     alert_types: alertTypeCounts,
     parameters_with_alerts: parametersResult.map((row) => row.parameter_code),
     locations_with_alerts: parseInt(locationsResult?.count || 0, 10),
-    average_resolution_time_hours: computeAvgResolutionHours(avgResolutionResult),
+    average_resolution_time_hours:
+      computeAvgResolutionHours(avgResolutionResult),
   };
 }
 

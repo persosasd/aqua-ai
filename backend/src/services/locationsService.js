@@ -95,9 +95,15 @@ const computeRiskSummary = (data) => {
 };
 
 const getLocationsFromDb = async (filters) => {
-  const { limit = PAGINATION_DEFAULTS.LIMIT, offset = PAGINATION_DEFAULTS.OFFSET } =
-    filters;
-  const baseQuery = applyLocationFilters(db('location_summary'), filters, false);
+  const {
+    limit = PAGINATION_DEFAULTS.LIMIT,
+    offset = PAGINATION_DEFAULTS.OFFSET,
+  } = filters;
+  const baseQuery = applyLocationFilters(
+    db('location_summary'),
+    filters,
+    false
+  );
   const totalResult = await baseQuery.clone().count('* as total').first();
   const total = parseInt(totalResult?.total || 0, 10);
 
@@ -114,8 +120,10 @@ const getLocationsFromDb = async (filters) => {
 };
 
 const getLocationsFromSupabase = async (filters) => {
-  const { limit = PAGINATION_DEFAULTS.LIMIT, offset = PAGINATION_DEFAULTS.OFFSET } =
-    filters;
+  const {
+    limit = PAGINATION_DEFAULTS.LIMIT,
+    offset = PAGINATION_DEFAULTS.OFFSET,
+  } = filters;
   let query = supabase.from('location_summary').select('*', { count: 'exact' });
 
   query = applyLocationFilters(query, filters, true);

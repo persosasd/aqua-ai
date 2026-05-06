@@ -42,7 +42,7 @@ jobs:
           echo "AI_SIZE=$(docker image inspect aqua-ai-ai-models:pr --format='{{.Size}}')" >> $GITHUB_ENV
 
       - name: Comment PR with image sizes
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const toMB = (bytes) => (parseInt(bytes) / 1024 / 1024).toFixed(1);

@@ -22,7 +22,7 @@
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
-    "@supabase/supabase-js": "^2.100.0",
+    "@supabase/supabase-js": "^2.106.0",
     "axios": "^1.16.1",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.8.0",

@@ -34,6 +34,7 @@ jest.mock('../src/db/supabase', () => {
     supabase: {
       from: jest.fn().mockReturnValue(chain),
     },
+    isSupabaseConfigured: true,
   };
 });
 

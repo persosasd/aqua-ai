@@ -1,0 +1,47 @@
+# Version control and metadata
+.git
+.github
+.gitignore
+
+# Node.js dependencies and build outputs
+node_modules/
+**/node_modules/
+build/
+dist/
+**/build/
+**/dist/
+coverage/
+**/coverage/
+*.tsbuildinfo
+
+# Python caches and virtual environments
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*.so
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.*
+
+# Logs and runtime/temp files
+logs/
+*.log
+pids/
+*.pid
+*.pid.lock
+*.tmp
+*.temp
+
+# Large model and generated data artifacts
+*.pkl
+*.joblib
+*.h5
+*.model
+ai-models/data/raw/*
+!ai-models/data/raw/.gitkeep
+ai-models/data/processed/*
+!ai-models/data/processed/.gitkeep

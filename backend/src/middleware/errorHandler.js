@@ -27,6 +27,10 @@ const errorHandler = (err, req, res, _next) => {
   // Only show debug info if EXPLICITLY in development mode
   const isDev = process.env.NODE_ENV === 'development';
 
+  // In production: show the message for client errors (4xx) but hide it for
+  // server errors (5xx) to avoid leaking internal implementation details.
+  const showMessage = isDev || statusCode < 500;
+
   // Log the full error server-side always
   logger.error('Error occurred:', {
     message: err.message,
@@ -38,10 +42,6 @@ const errorHandler = (err, req, res, _next) => {
     userId: req.user?.id,
     requestId: req.requestId,
   });
-
-  // In production: show the message for client errors (4xx) but hide it for
-  // server errors (5xx) to avoid leaking internal implementation details.
-  const showMessage = isDev || statusCode < 500;
 
   const response = {
     success: false,

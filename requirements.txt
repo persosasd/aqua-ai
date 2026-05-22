@@ -39,7 +39,7 @@ python-dotenv>=1.0.0
 pyyaml>=6.0.3
 
 # Logging and monitoring
-loguru>=0.7.0
+loguru>=0.7.3
 
 # Testing
 pytest>=7.4.0
